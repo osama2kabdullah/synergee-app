@@ -1,0 +1,16 @@
+{% extends 'layout.html' %}
+{% import 'macros/ui_components.html' as ui %}
+{% from 'macros/ui_components.html' import button %}
+
+{% block title %}Home{% endblock %}
+
+{% block content %}
+    <h1>Welcome</h1>
+    <p>This is the main content area.</p>
+
+    {{ ui.button('Products', href='/products', style='success') }}
+    
+    {{ button('Buy Now', href='/checkout') }}
+
+    {{ ui.card('Fast', 'Our app rearranges Shopify images in seconds.') }}
+{% endblock %}

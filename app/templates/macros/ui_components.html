@@ -1,0 +1,10 @@
+{% macro button(text, href='#', style='primary') %}
+    <a href="{{ href }}" class="btn btn-{{ style }}">{{ text }}</a>
+{% endmacro %}
+
+{% macro card(title, body) %}
+    <div class="card">
+        <h3>{{ title }}</h3>
+        <p>{{ body }}</p>
+    </div>
+{% endmacro %}
