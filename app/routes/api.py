@@ -34,7 +34,7 @@ def populate_single_product():
         # Pass it to the template
         return jsonify({"success": True, "data": result})
 
-    return jsonify({"success": False, "error": "Product ID cannot be empty."})
+    return jsonify({"success": False, "error": {"message": "Product ID cannot be empty."}})
 
 
 def old_images_with_new(var_old_images, product_images):

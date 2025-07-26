@@ -1,98 +1,142 @@
 {% extends 'layout.html' %}
 {% block title %}
-  {% if data.query %}Search for "{{ data.query }}" {% endif %}Products
+  {% if not data.ok %}Error Happened{% elif data.query %}Search for "{{ data.query }}"{% else %}Products{% endif %}
 {% endblock %}
 {% block content %}
 
 <div class="py-5 bg-body-tertiary">
   <div class="container">
+    {% if not data.ok %}
+      <div class="alert alert-danger p-4 text-center">
+        <h4 class="mb-3">⚠️ Unable to load products</h4>
+        <p class="text-muted">Shopify returned an error. You can try again or contact support if this persists.</p>
 
-    <!-- Search Form -->
-    <form method="GET" action="{{ url_for('main.products') }}" style="max-width: 500px;" class="m-auto mb-4">
-      <label for="search" class="form-label">Search</label>
-      <div class="input-group">
-        <input
-          type="search"
-          class="form-control"
-          id="search"
-          name="q"
-          placeholder="Product Name"
-          value="{{ data.query }}"
-        />
-        <input type="hidden" name="limit" value="{{ data.limit }}">
-        <button class="btn btn-primary" type="submit">Search</button>
+        {% if data.errors %}
+          <pre class="text-start bg-light p-3 border rounded small text-danger" style="white-space: pre-wrap;">{{ data.errors | tojson(indent=2) }}</pre>
+        {% endif %}
+
+        <form method="GET" class="d-inline-block mt-3">
+          <input type="hidden" name="q" value="{{ data.query }}">
+          <input type="hidden" name="limit" value="{{ data.limit }}">
+          {% if data.show_incompleted %}
+            <input type="hidden" name="showIncompleted" value="1">
+          {% endif %}
+          <button type="submit" class="btn btn-danger">🔁 Retry</button>
+        </form>
       </div>
-    </form>
-
-    <div class="d-flex justify-content-between my-5">
-      <p>Products Showing: {{data.start}} - {{data.end}}</p>
-      <p>Total Products: {{ data.total_count }}</p>
-    </div>
-    
-    <div class="d-flex justify-content-between my-5">
-      <!-- Filter -->
-      <form method="GET" class="d-flex gap-3 align-items-center mb-4">
-        <input type="hidden" name="q" value="{{ data.query }}">
-        <label for="limit" class="form-label">Show:</label>
-        <select id="limit" name="limit" class="form-select" style="width: 100px;" onchange="this.form.submit()">
-          {% for option in [5, 20, 40, 50, 70, 100] %}
-            <option value="{{ option }}" {% if data.limit == option %}selected{% endif %}>{{ option }}</option>
-          {% endfor %}
-        </select>
+    {% else %}
+      <!-- Search Form -->
+      <form method="GET" action="{{ url_for('main.products') }}" style="max-width: 500px;" class="m-auto mb-5">
+        <label for="search" class="form-label">Search</label>
+        <div class="input-group">
+          <input
+            type="search"
+            class="form-control"
+            id="search"
+            name="q"
+            placeholder="Product Name"
+            value="{{ data.query }}"
+          />
+          <input type="hidden" name="limit" value="{{ data.limit }}">
+          <button class="btn btn-primary" type="submit">Search</button>
+        </div>
       </form>
-
-      <div>
-        <button type="button" id="perform_all" class="btn btn-outline-success">Perform to all</button>
+  
+      <div class="d-flex justify-content-between my-5">
+        <div>
+          <p>Showing products <strong>{{ data.start }}</strong> to <strong>{{ data.end }}</strong></p>
+          <p><strong>{{ data.current_page_showing }}</strong> products displayed on this page</p>
+          {% if data.query %}
+            <p>Search results for: <i>"{{ data.query }}"</i></p>
+          {% endif %}
+        </div>
+        <div>
+          <p>Page <strong>{{ data.current_page }}</strong> of <strong>{{ data.total_pages }}</strong></p>
+          <p>Total matching products: <strong>{{ data.total_count }}</strong></p>
+        </div>
       </div>
-    </div>
-    
-
-    <!-- Products List -->
-    <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-3">
-      {% if data.products %}
-        {% for product in data.products %}
-          <div class="col">
-            <div class="card shadow-sm">
-              <img src="{{ product.image_url }}&width=350&height=225&crop=center" class="bd-placeholder-img card-img-top" height="225" style="object-fit: cover;" />
-              <div class="card-body">
-                <a href="{{ product.url }}" target="_blank">
-                  <h5 class="card-title">{{ product.title }}</h5>
-                </a>
-                <p>Variant Count: {{ product.variantsCount }}</p>
-                <p>Product level Image Count: {{ product.imagesCount }}</p>
-                <p>All Variant level Image Count: {{ product.all_variant_level_image_count }}</p>
-                {% if product.filled_images %}
-                  <button disabled class="btn btn-primary" data-product-id="{{ product.id }}">✅ Done</button>
-                {% else %}
-                  <button class="btn btn-outline-primary" data-product-id="{{ product.id }}">Populate Images</button>
-                {% endif %}
-                <div class="result"></div>
+      
+      <div class="d-flex flex-wrap justify-content-between align-items-center my-5">
+        <!-- Filter -->
+        <form method="GET" class="d-flex gap-3 align-items-center">
+          <input type="hidden" name="q" value="{{ data.query }}">
+          <label for="limit" class="form-label">Show:</label>
+          <select id="limit" name="limit" class="form-select" style="width: 100px;" onchange="this.form.submit()">
+            {% for option in [5, 20, 40, 50, 70, 100] %}
+              <option value="{{ option }}" {% if data.limit == option %}selected{% endif %}>{{ option }}</option>
+            {% endfor %}
+          </select>
+  
+          <!-- Checkbox filter -->
+          <div class="form-check form-switch">
+            <input
+              class="form-check-input"
+              type="checkbox"
+              role="switch"
+              id="showIncompleted"
+              name="showIncompleted"
+              value="1"
+              {% if data.show_incompleted %}checked{% endif %}
+              onchange="this.form.submit()"
+            />
+            <label class="form-check-label" for="showIncompleted">Show Incompleted</label>
+          </div>
+        </form>
+  
+        <div>
+          <button type="button" id="perform_all" class="btn btn-outline-success">Perform to all</button>
+        </div>
+      </div>
+      
+  
+      <!-- Products List -->
+      <div {% if data.products %}{% else %}style="min-height: 40vh;"{% endif %} class="{% if data.products %}row-cols-sm-2 row-cols-md-3{% else %}justify-content-center align-items-center row-cols-sm-1 row-cols-md-1{% endif %} row row-cols-1 g-3">
+        {% if data.products %}
+          {% for product in data.products %}
+            <div class="col">
+              <div class="card shadow-sm">
+                <img src="{{ product.image_url }}&width=350&height=225&crop=center" class="bd-placeholder-img card-img-top" height="225" style="object-fit: cover;" />
+                <div class="card-body">
+                  <a href="{{ product.url }}" target="_blank">
+                    <h5 class="card-title">{{ product.title }}</h5>
+                  </a>
+                  <p>Variant Count: {{ product.variantsCount }}</p>
+                  <p>Product level Image Count: {{ product.imagesCount }}</p>
+                  <p>All Variant level Image Count: {{ product.all_variant_level_image_count }}</p>
+                  {% if product.filled_images %}
+                    <button disabled class="btn btn-primary" data-product-id="{{ product.id }}">✅ Done</button>
+                  {% else %}
+                    <button class="btn btn-outline-primary" data-product-id="{{ product.id }}">Populate Images</button>
+                  {% endif %}
+                  <div class="result"></div>
+                </div>
               </div>
             </div>
-          </div>
-        {% endfor %}
-      {% else %}
-        <p class="text-center">No products found.</p>
-      {% endif %}
-    </div>
+          {% endfor %}
+        {% else %}
+          <p class="text-center">No products found.</p>
+        {% endif %}
+      </div>
+  
+      <!-- Pagination Controls -->
+      <nav aria-label="Product pagination" class="my-5">
+        <ul class="pagination justify-content-center">
+  
+        {% if data.has_previous_page and data.start_cursor %}
+          <li class="page-item">
+            <a class="page-link" href="{{ url_for('main.products', limit=data.limit, before=data.start_cursor, start=data.start-data.limit, q=data.query) }}">Previous Page</a>
+          </li>
+        {% endif %}
+        {% if data.has_next_page and data.end_cursor %}
+          <li class="page-item">
+            <a class="page-link" href="{{ url_for('main.products', limit=data.limit, after=data.end_cursor, start=data.end+1, q=data.query) }}">Next Page</a>
+          </li>
+        {% endif %}
+          
+        </ul>
+      </nav>
+    {% endif %}
 
-    <!-- Pagination Controls -->
-    <nav aria-label="Product pagination" class="my-5">
-      <ul class="pagination justify-content-center">
-
-      {% if data.has_previous_page and data.start_cursor %}
-        <li class="page-item">
-          <a class="page-link" href="{{ url_for('main.products', limit=data.limit, before=data.start_cursor, start=data.start-data.limit, q=data.query) }}">Previous Page</a>
-        </li>
-      {% endif %}
-      {% if data.has_next_page and data.end_cursor %}
-        <li class="page-item">
-          <a class="page-link" href="{{ url_for('main.products', limit=data.limit, after=data.end_cursor, start=data.end+1, q=data.query) }}">Next Page</a>
-        </li>
-      {% endif %}
-        
-      </ul>
-    </nav>
 
   </div>
 </div>

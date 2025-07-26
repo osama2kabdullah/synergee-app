@@ -5,9 +5,8 @@ from flask import render_template, request
 
 @main.route('/products')
 def products():
-    raw_query = request.args.get('q', '').strip()
-    # search_query = f'query=title:{raw_query}' if raw_query else None
-    search_query = f'{raw_query}' if raw_query else None
+    query = request.args.get('q', '').strip()
+    show_incompleted = request.args.get('showIncompleted', '1' if not request.args else '0') == '1'
     limit = int(request.args.get('limit', 20))
     after = request.args.get('after')
     before = request.args.get('before')
@@ -15,26 +14,43 @@ def products():
 
     data = {}
 
-    loaded_data = load_default_products(limit, after, before, start, search_query, raw_query)
+    loaded_data = load_default_products(limit, after, before, start, query, show_incompleted)
     data.update(loaded_data)
 
     return render_template('products.html', data=data)
 
-def load_default_products(limit, after, before, start, search_query, raw_query):
+def load_default_products(limit, after, before, start, query, show_incompleted):
     variables = {
         "first": limit if not before else None,
         "last": limit if before else None,
         "after": after,
         "before": before,
-        "query": search_query,
+        "query": query,
     }
+    end = (start + limit) - 1
+    current_page = ((start - 1) // limit) + 1
     response = graphql_request(QUERIES["all_products"], variables)
+    # response = graphql_request(QUERIES["err_all_products"], variables)
     # Error handling
-    ok = True
-    errors = ""
     if "errors" in response:
-        ok= False
-        errors = response['errors']
+        return {
+            "ok": False,
+            "start": start,
+            "end": end,
+            "query": query,
+            "current_page_showing": 0,
+            "total_count": 0,
+            "products": [],
+            "errors": response["errors"],
+            "show_incompleted": show_incompleted,
+            "limit": limit,
+            "current_page": current_page,
+            "total_pages": 1,
+            "has_next_page": False,
+            "has_previous_page": False,
+            "start_cursor": None,
+            "end_cursor": None
+        }
 
     products = []
     for edge in response['data']['products']['edges']:
@@ -70,26 +86,32 @@ def load_default_products(limit, after, before, start, search_query, raw_query):
             "all_variant_level_image_count": all_variant_image_count,
             "filled_images": filled_images
         }
-
-        products.append(product)
+        # Append all products if not filtering; otherwise only incomplete ones
+        if not show_incompleted or not filled_images:
+            products.append(product)
 
     page_info = response['data']['products']['pageInfo']
+    print('pag', page_info)
     end_cursor = page_info['endCursor']
     start_cursor = page_info['startCursor']
     total_count = response['data']['productsCount']['count']
-    end = start + len(products) - 1 if products else start
+    total_pages = ((total_count - 1) // limit) + 1
+
     data = {
-        "ok": ok,
-        "errors": errors,
         "end": end,
-        "start": start,
-        "query": raw_query,
         "end_cursor": end_cursor,
         "start_cursor": start_cursor,
         "total_count": total_count,
-        "limit":limit,
         "has_next_page": page_info['hasNextPage'],
         "has_previous_page": page_info['hasPreviousPage'],
-        "products": products
+        "products": products,
+        "ok": True,
+        "start": start,
+        "query": query,
+        "current_page_showing": len(products),
+        "show_incompleted": show_incompleted,
+        "limit":limit,
+        "current_page": current_page,
+        "total_pages": total_pages
     }
     return data

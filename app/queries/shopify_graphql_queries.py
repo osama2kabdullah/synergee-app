@@ -60,6 +60,67 @@ QUERIES = {
     }
   """,
 
+  "err_all_products": """
+    query GetAllProducts (
+      $first: Int, 
+      $last: Int, 
+      $after: String, 
+      $before: String,
+      $query: String
+    ) {
+      productsCount(query: $query) {
+        count
+      }
+      products(first: $first, last: $last, after: $after, before: $before, query: $query) {
+        edges {
+          cursor
+          node {
+            id
+            title
+            images(first: 1) {
+              edges {
+                node {
+                  originalSrc
+                }
+              }
+            }
+            variantsCount {
+              count
+            }
+            onlineStorePreviewUrl
+            mediaCount {
+              count
+            }
+            variants(first: 250) {
+              edges {
+                node {
+                  id
+                  title
+
+                  # ← This field doesn’t exist on the variant type →
+                  fooBarDoesNotExist
+
+                  imagesUrl: metafield(namespace: "custom", key: "variant_images_url") {
+                    jsonValue
+                  }
+                  assetImages: metafield(namespace: "custom", key: "variant_images") {
+                    jsonValue
+                  }
+                }
+              }
+            }
+          }
+        }
+        pageInfo {
+          hasNextPage
+          hasPreviousPage
+          endCursor
+          startCursor
+        }
+      }
+    }
+  """,
+
   "all_products": """
     query GetAllProducts (
       $first: Int, 
