@@ -1,193 +1,122 @@
 import os
-from urllib.parse import unquote, urlparse
-from app.queries.shopify_graphql_queries import QUERIES
-from app.utils.helper import ShopifyGIDBuilder, create_media_from_url, graphql_request
+from app.utils.helper import ShopifyProductBuilder
 from . import main
-from flask import json, jsonify, request
+from flask import jsonify, request
+from app.utils.response import success_response, error_response
+
+ACCESS_TOKEN = os.getenv("SHOPIFY_ACCESS_TOKEN")
+SHOP_URL = os.getenv("SHOPIFY_STORE_URL")
+
+@main.route('/api/delete-populated-single-product', methods=['POST'])
+def delete_populated_single_product():
+    data = request.get_json()
+
+    if not data or 'product_id' not in data:
+        return error_response('Missing product_id in request body', 400)
+    
+    product_id = data['product_id']
+    product = ShopifyProductBuilder(product_id=product_id, shop_url=SHOP_URL, access_token=ACCESS_TOKEN)
+    if not product.product_data:
+        return error_response('Product data not available', 404)
+    if not product.is_filled_images():
+        return error_response('Product images are not populated', 400)
+    result = product.delete_asset_images_from_metafield()
+    
+    if result.get("errors"):
+        return error_response(
+            message="Error while deleting images.",
+            data=result
+        )
+    
+    return success_response(
+        message="Image deletion attempted.",
+        status='success',
+        data=result
+    )
+
+@main.route('/api/populate-unmatched-images', methods=['POST'])
+def populate_unmatched_images():
+    client_data = request.get_json()
+
+    if not client_data or 'product_id' not in client_data:
+        return error_response('Missing product_id in request body', 400)
+
+    product_id = client_data['product_id']
+    product = ShopifyProductBuilder(product_id=product_id, shop_url=SHOP_URL, access_token=ACCESS_TOKEN)
+
+    if not product.product_data:
+        return error_response('Product data not available', 404)
+    
+    if product.is_filled_images():
+        return success_response(data=None, message='Images are already populated', status='success')
+    
+    variants_data = product.data_for_put_into_metafield()
+
+    if variants_data.get("unmatched_count") > 0:
+        # in that case we have to modify and then 
+        # call again the put_images_into_metafield
+        result = product.put_images_into_metafield(client_data.get("data"), delete_existing=False)
+
+        if result.get("errors"):
+            return error_response(
+                message="Error while populating images.",
+                data=result
+            )
+        
+        return success_response(
+            message="Image population attempted.",
+            status='success',
+            data=result
+        )
 
 @main.route('/api/populate-single-product', methods=['POST'])
 def populate_single_product():
     data = request.get_json()
-    product_id = data.get('product_id')
 
-    if product_id.strip() == "":
-        # grab product data
-        product_gid = ShopifyGIDBuilder("Product")
-        product_gid_full = product_gid.build(product_id)  # gid://shopify/Product/:id
-        response = graphql_request(QUERIES["single_product"], {"id": product_gid_full})
+    if not data or 'product_id' not in data:
+        return error_response('Missing product_id in request body', 400)
 
-        # Get the list of variant nodes
-        variants = response.get("data", {}).get("product", {}).get("variants", {}).get("nodes", [])
-        var_old_images = old_images(variants)
-        product_images = get_all_images(response)
-        var_old_images_with_new = old_images_with_new(var_old_images, product_images)
-        response_of_create_not_found_images, created_count = create_not_found_images(var_old_images_with_new)
-        response_of_put_images_into_metafield = put_images_into_metafield(response_of_create_not_found_images)
-        
-        # Build the sync result object
-        result = {
-            "message": "Image sync completed",
-            "created_images": created_count,
-            "metafield_update_summary": response_of_put_images_into_metafield
-        }
+    product_id = data['product_id']
+    product = ShopifyProductBuilder(product_id=product_id, shop_url=SHOP_URL, access_token=ACCESS_TOKEN)
 
-        # Pass it to the template
-        return jsonify({"success": True, "data": result})
-
-    return jsonify({"success": False, "error": {"message": "Product ID cannot be empty."}})
-
-
-def old_images_with_new(var_old_images, product_images):
-    # Step 1: Build a lookup using new image filenames
-    product_lookup = {}
-    for img in product_images:
-        new_filename = os.path.basename(urlparse(img["url"]).path)
-        product_lookup[new_filename] = {
-            "id": img.get("id"),
-            "new_img_url": img["url"]
-        }
-
-    final_variants = []
-
-    # Step 2: Walk through variants
-    for var in var_old_images:
-        variant_title = var.get("variant_title", "")
-        variant_id = var.get("variant_id", "")
-        images = []
-
-        for img in var.get("images", []):
-            old_url = img.get("url")
-            if not old_url:
-                continue
-
-            raw_filename = os.path.basename(urlparse(old_url).path)
-            decoded_filename = unquote(raw_filename)
-            normalized_old_name = decoded_filename.replace(" ", "_20")
-
-            match = product_lookup.get(normalized_old_name)
-
-            images.append({
-                "old_img_url": old_url,
-                "new_img_url": match["new_img_url"] if match else "",
-                "id": match["id"] if match else ""
-            })
-
-        final_variants.append({
-            "variant_id": variant_id,
-            "variant_title": variant_title,
-            "images": images
-        })
-
-    return final_variants
-
-def get_all_images(response):
-    media_nodes = response.get("data", {}).get("product", {}).get("media", {}).get("nodes", [])
+    if not product.product_data:
+        return error_response('Product data not available', 404)
     
-    images = []
-    for node in media_nodes:
-        if not node:
-            continue  # skip None nodes
+    if product.is_filled_images():
+        return success_response(data=None, message='Images are already populated', status='success')
+    
+    data = product.data_for_put_into_metafield()
 
-        image = node.get("image")
-        if image and "url" in image:
-          images.append({"id": node.get("id"), "url": image["url"]})
-
-    return images
-
-def old_images(variants):
-    # Build the desired format
-    variant_data = []
-    for variant in variants:
-        images = []
-        image_urls = variant.get("imagesUrl", {}).get("jsonValue", [])
-
-        # Ensure it's a list
-        if isinstance(image_urls, list):
-            for url in image_urls:
-                images.append({"url": url})
-
-        variant_data.append({
-            "variant_title": variant.get("title"),  # or use "id" if you prefer
-            "variant_id": variant.get("id"),  # or use "id" if you prefer
-            "images": images
-        })
-
-    # Now `variant_data` is in the desired format
-    return variant_data
-
-def create_not_found_images(var_old_images_with_new):
-    created_count = 0
-    seen_urls = {}  # Cache for already created media {old_url: {"id": ..., "new_img_url": ...}}
-
-    for variant in var_old_images_with_new:
-        for image in variant.get("images", []):
-            if not image.get("new_img_url") or not image.get("id"):
-                old_url = image.get("old_img_url")
-                
-                if old_url in seen_urls:
-                    # Use the already created info
-                    image["id"] = seen_urls[old_url]["id"]
-                    image["new_img_url"] = seen_urls[old_url]["new_img_url"]
-                    continue
-
-                created = create_media_from_url(old_url)
-
-                if created:
-                    image["id"] = created["id"]
-                    image["new_img_url"] = created.get("url", "")  # Assuming your create_media_from_url now returns both
-                    seen_urls[old_url] = {
-                        "id": image["id"],
-                        "new_img_url": image["new_img_url"]
-                    }
-                    created_count += 1
-                    print(f"[INFO] File created for: {old_url}")
-                else:
-                    print(f"[WARN] Could not create media for: {old_url}")
-
-    return var_old_images_with_new, created_count
-
-def put_images_into_metafield(images_with_id):
-    summary = {
-        "success": [],
-        "skipped": [],
-        "errors": []
-    }
-
-    for variant in images_with_id:
-        variant_id = variant.get("variant_id")
-        image_ids = [
-            img["id"]
-            for img in variant.get("images", [])
-            if img.get("id")
-        ]
-
-        if not variant_id or not image_ids:
-            summary["skipped"].append(variant_id or "Unknown variant")
-            continue  # skip if no variant ID or no valid images
-
-        metafield_input = {
-            "ownerId": variant_id,
-            "namespace": "custom",
-            "key": "variant_images",
-            "value": json.dumps(image_ids)
-        }
-
-        try:
-            response = graphql_request(QUERIES["metafield_set"], {"metafields": [metafield_input]})
-            errors = response.get("data", {}).get("metafieldsSet", {}).get("userErrors", [])
-
-            if errors:
-                summary["errors"].append({
-                    "variant_id": variant_id,
-                    "errors": errors
-                })
-            else:
-                summary["success"].append(variant_id)
-
-        except Exception as e:
-            summary["errors"].append({
-                "variant_id": variant_id,
-                "exception": str(e)
-            })
-
-    return summary
+    if data.get("unmatched_count") > 0:
+        # in that case we have to modify and then 
+        # call again the put_images_into_metafield
+        return error_response(
+            message=f"Some images are unmatched. Please review before populating. Unmatched count: {data.get('unmatched_count')}",
+            # data=data.get("results")
+            data={
+                "unmatched_count": data.get("unmatched_count"),
+                "product_title": product.get_title(),
+                "media": product.get_media(),
+                "results": data.get("results"),
+            }
+            # data = product.as_summary_dict()
+        )
+    
+    if not data.get("results"):
+        return error_response(
+            message="No images Found to populate."
+        )
+    
+    result = product.put_images_into_metafield(data.get("results"), delete_existing=False)
+    
+    if result.get("errors"):
+        return error_response(
+            message="Error while populating images.",
+            data=result
+        )
+    
+    return success_response(
+        message="Image population attempted.",
+        status='success',
+        data=result
+    )

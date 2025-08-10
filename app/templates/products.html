@@ -103,11 +103,13 @@
                   <p>Variant Count: {{ product.variantsCount }}</p>
                   <p>Product level Image Count: {{ product.imagesCount }}</p>
                   <p>All Variant level Image Count: {{ product.all_variant_level_image_count }}</p>
+                  <p>image_has_issue: {{ product.image_has_issue }}</p>
                   {% if product.filled_images %}
                     <button disabled class="btn btn-primary" data-product-id="{{ product.id }}">✅ Done</button>
                   {% else %}
-                    <button class="btn btn-outline-primary" data-product-id="{{ product.id }}">Populate Images</button>
-                  {% endif %}
+                    <button class="btn btn-outline-primary" data-populate-button data-product-id="{{ product.id }}">Populate Images</button>
+                    {% endif %}
+                    <button class="btn btn-danger" data-populate-button-delete data-product-id="{{ product.id }}">Delete Assest Images</button>
                   <div class="result"></div>
                 </div>
               </div>
@@ -124,12 +126,12 @@
   
         {% if data.has_previous_page and data.start_cursor %}
           <li class="page-item">
-            <a class="page-link" href="{{ url_for('main.products', limit=data.limit, before=data.start_cursor, start=data.start-data.limit, q=data.query) }}">Previous Page</a>
+            <a class="page-link" href="{{ url_for('main.products', limit=data.limit, before=data.start_cursor, start=data.start-data.limit, q=data.query, showIncompleted=data.show_incompleted) }}">Previous Page</a>
           </li>
         {% endif %}
         {% if data.has_next_page and data.end_cursor %}
           <li class="page-item">
-            <a class="page-link" href="{{ url_for('main.products', limit=data.limit, after=data.end_cursor, start=data.end+1, q=data.query) }}">Next Page</a>
+            <a class="page-link" href="{{ url_for('main.products', limit=data.limit, after=data.end_cursor, start=data.end+1, q=data.query, showIncompleted=data.show_incompleted) }}">Next Page</a>
           </li>
         {% endif %}
           

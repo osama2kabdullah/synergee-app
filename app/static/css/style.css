@@ -1,0 +1,41 @@
+.drop-zone.hover {
+  background-color: #d0ffd0;
+}
+.drop-zone.filled button[data-image-popup],
+.drop-zone.filled button[data-image-remove] {
+  display: block;
+}
+.drop-zone button[data-image-popup],
+.drop-zone button[data-image-remove] {
+  display: none;
+}
+img[draggable="true"] {
+  cursor: move;
+}
+.zone-wrap.error .drop-zone {
+  background-color: #f8d7da;
+}
+.drop-zone {
+  width: 200px;
+  height: auto;
+  min-height: 200px;
+  border: 2px dashed #999;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  margin-right: 10px;
+  background-color: #f9f9f9;
+  position: relative;
+}
+.product-details {
+  display: grid;
+  grid-template-columns: 4.5fr 2.5fr;
+}
+.product-images-list,
+.missing-zones-list-wrap {
+  max-height: calc(100vh - 210px);
+  overflow-y: scroll;
+}
+svg {
+  display: block;
+}

@@ -69,6 +69,30 @@ def load_default_products(limit, after, before, start, query, show_incompleted):
                 if isinstance(file_images, list) and file_images:
                     filled_images = True
                     break
+        # print(f"{asset_images}\n\n - {image_urls}\n\n")
+
+        image_has_issue = True  # Assume issue by default
+
+        all_matched = True  # Track if every variant matches
+
+        for variant in variants:
+            asset_images = variant.get("assetImages") or {}
+            image_urls = variant.get("imagesUrl") or {}
+
+            count_assets = len(asset_images.get("jsonValue", []))
+            count_urls = len(image_urls.get("jsonValue", []))
+
+            # print(f"{count_assets} - {count_urls}")
+
+            if count_assets != count_urls:
+                all_matched = False  # Found a mismatch
+
+        # Final decision
+        if all_matched:
+            image_has_issue = False
+
+        # print(node["title"], "\n\nFinal issue flag:", image_has_issue, "\n\n")
+
 
         for variant in variants:
             images_url = (variant.get("imagesUrl") or {}).get("jsonValue", [])
@@ -84,11 +108,15 @@ def load_default_products(limit, after, before, start, query, show_incompleted):
             "variants": variants,
             "image_url": node['images']['edges'][0]['node']['originalSrc'] if node['images']['edges'] else None,
             "all_variant_level_image_count": all_variant_image_count,
-            "filled_images": filled_images
+            "filled_images": filled_images,
+            "image_has_issue": image_has_issue
         }
         # Append all products if not filtering; otherwise only incomplete ones
         if not show_incompleted or not filled_images:
             products.append(product)
+        # if image_has_issue:
+        #     products.append(product)
+
 
     page_info = response['data']['products']['pageInfo']
     print('pag', page_info)

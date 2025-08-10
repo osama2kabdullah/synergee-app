@@ -1,6 +1,8 @@
+from urllib.parse import urlparse, unquote
+from flask import json
 import requests
 import os
-from app.queries.shopify_graphql_queries import QUERIES
+from app.graphql_queries.query_builders.query_builders import MetafieldMutationBuilder, ProductQueryBuilder
 
 ACCESS_TOKEN = os.getenv("SHOPIFY_ACCESS_TOKEN")
 SHOP_URL = os.getenv("SHOPIFY_STORE_URL")
@@ -13,6 +15,12 @@ def shopify_headers():
         "X-Shopify-Access-Token": ACCESS_TOKEN,
     }
 
+def shopify_headers2(access_token):
+    return {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": access_token,
+    }
+
 def graphql_request(query, variables=None):
     payload = {"query": query}
     if variables:
@@ -20,38 +28,378 @@ def graphql_request(query, variables=None):
     response = requests.post(SHOPIFY_GRAPHQL_URL, json=payload, headers=shopify_headers())
     return response.json()
 
+def shopify_request(query, shop_url, access_token, variables=None):
+    payload = {"query": query}
+    if variables:
+        payload["variables"] = variables
+    headers = shopify_headers2(access_token=access_token)
+    shopify_graphql_url = f"{shop_url}/admin/api/{SHOPIFY_API_VERSION}/graphql.json"
+    response = requests.post(shopify_graphql_url, json=payload, headers=headers)
+    return response
+
 class ShopifyGIDBuilder:
     def __init__(self, object_type: str):
         self.object_type = object_type
 
     def build(self, object_id: str) -> str:
         return f"gid://shopify/{self.object_type}/{object_id}"
+
+def get_normalized_name(url):
+    filename = os.path.basename(urlparse(url).path)
+    normalized_name = unquote(filename).replace(" ", "_20")
+    return normalized_name
+
+# Helper to resolve variant info from index
+def resolve_variant_info(idx, payload, data):
+    variant_info = payload[idx] if idx is not None and idx < len(payload) else {}
+    variant_id = variant_info.get("ownerId", "unknown")
+    variant_title = next(
+        (v.get("variant_title") for v in data if v.get("variant_id") == variant_id),
+        ""
+    )
+    return variant_id, variant_title
+
+class ShopifyProductBuilder:
+    def __init__(self, product_id, shop_url, access_token):
+        self.product_id = ShopifyGIDBuilder("Product").build(product_id)
+        self.shop_url = shop_url
+        self.access_token = access_token
+
+        self.product_data = None
+        self.errors = []
+        self._fetch_product()
+
+    def _fetch_product(self):
+        builder = ProductQueryBuilder()
+        query = builder.build(include_media=True, 
+                              variants_limit=100, 
+                              include_variants=True, 
+                              include_variant_images_raw_url=True, 
+                              is_filled=True, 
+                              include_filled_variant_images_assets=False)
+        variables = {"id": self.product_id}
+
+        try:
+            response = shopify_request(
+                query=query,
+                shop_url=self.shop_url,
+                access_token=self.access_token,
+                variables=variables
+            )
+            json_data = response.json()
+        except Exception as e:
+            self.errors.append(f"Request or JSON parsing error: {e}")
+            return
+
+        if "errors" in json_data:
+            self.errors.extend(json_data["errors"])
+        
+        product = json_data.get("data", {}).get("product")
+        if product:
+            self.product_data = product
+
+    def get_title(self):
+        return self.product_data.get("title") if self.product_data else None
+
+    def get_preview_url(self):
+        return self.product_data.get("onlineStorePreviewUrl") if self.product_data else None
+
+    def get_media_count(self):
+        if not self.product_data:
+            return False
+        count = self.product_data.get("mediaCount", {}).get("count")
+        return count
+
+    def get_variant_count(self):
+        if not self.product_data:
+            return False
+        count = self.product_data.get("variantsCount", {}).get("count")
+        return count
+
+    def get_media(self):
+        if not self.product_data:
+            return []
+
+        media_nodes = self.product_data.get("media", {}).get("nodes", [])
+        formatted = []
+
+        for node in media_nodes:
+            media_id = node.get("id")
+            img_url = node.get("image", {}).get("url")
+            assumed_name = get_normalized_name(img_url)
+            formatted.append({"id": media_id, "img_url": img_url, "name": assumed_name})
+        return formatted
+
+    def get_variants(self):
+        if not self.product_data:
+            return []
+
+        variants = self.product_data.get("variants", {}).get("nodes", [])
+
+        variant_data = []
+        for variant in variants:
+            raw_image_urls = []
+            image_urls = variant.get("imagesUrl", {}).get("jsonValue", [])
+
+            raw_asset_images = variant.get("assetImages")
+            nodes = []
+
+            if isinstance(raw_asset_images, dict):
+                nodes = (
+                    raw_asset_images.get("images") or raw_asset_images.get("first") or {}
+                ).get("nodes", [])
+
+            assetImages = []
+            for node in nodes:
+                media_id = node.get("id")
+                img_url = node.get("image", {}).get("url")
+                if media_id and img_url:
+                    assetImages.append({
+                        "id": media_id,
+                        "image_url": img_url
+                    })
+
+            # Ensure it's a list
+            if isinstance(image_urls, list):
+                for url in image_urls:
+                    raw_image_urls.append({"url": url, "name": get_normalized_name(url)})
+
+            variant_data.append({
+                "variant_title": variant.get("title"),
+                "variant_id": variant.get("id"),
+                "raw_image_urls": raw_image_urls,
+                "assetImages": assetImages,
+                "images_count": len(raw_image_urls),
+                # "all_data": variant,
+                "filled_images": bool(assetImages)
+            })
+
+        return variant_data
+
+    def is_filled_images(self):
+        variants = self.get_variants()
+        if not variants:
+            return False
+
+        for variant in variants:
+            if variant.get("filled_images"):
+                return True
+        return False
+
+    def get_total_variant_images_count(self):
+        
+        variants = self.get_variants()
+        if not variants:
+            return False
+
+        total = 0
+        for variant in variants:
+            total += variant.get("images_count", 0)
+        return total
     
-def transform_filename(url):
-    return url.split("/")[-1].replace("%20", "_20")
-
-def create_media_from_url(originalSource_url):
-    try:
-        result = graphql_request(QUERIES["file_create"], {"originalSource": originalSource_url})
-        file_data = result.get("data", {}).get("fileCreate", {})
-
-        user_errors = file_data.get("userErrors", [])
-        if user_errors:
-            print(f"[WARN] fileCreate userErrors for {originalSource_url}: {user_errors}")
-            return None
-
-        files = file_data.get("files", [])
-        if not files:
-            print(f"[WARN] No files returned from fileCreate for {originalSource_url}")
-            return None
-
-        created_file = files[0]
+    def as_summary_dict(self):
         return {
-            "id": created_file.get("id"),
-            "fileStatus": created_file.get("fileStatus")
-            # No URL is returned here, we cannot guess it
+            "title": self.get_title(),
+            "preview_url": self.get_preview_url(),
+            "media_count": self.get_media_count(),
+            "variant_count": self.get_variant_count(),
+            "media": self.get_media(),
+            "total_variant_images_count": self.get_total_variant_images_count(),
+            "variants": self.get_variants(),
+            "is_filled_images": self.is_filled_images(),
+            "has_errors": self.has_errors(),
+            "errors": self.get_errors(),
+            "populate_images": self.populate_images()
         }
 
-    except Exception as e:
-        print(f"[ERROR] Exception while creating media for {originalSource_url}: {e}")
-        return None
+    def has_errors(self):
+        return len(self.errors) > 0
+
+    def get_errors(self):
+        return self.errors
+
+    def data_for_put_into_metafield(self):
+        product_image_cache = {}
+        for img in self.get_media():
+            url = img.get("img_url")
+            name = img.get("name")
+            product_image_cache[name] = {
+                "id": img.get("id"),
+                "img_url": url
+            }
+
+        results = []
+        unmatched_count = 0
+
+        # Match variant images
+        for var in self.get_variants():
+            variant_id = var.get("variant_id")
+            variant_title = var.get("variant_title")
+            data_images = []
+
+            for img in var.get("raw_image_urls", []):
+                old_url = img.get("url")
+                normalized_old_name = img.get("name")
+                match = product_image_cache.get(normalized_old_name)
+
+                matched = bool(match)
+                needs_upload = not matched
+                if needs_upload:
+                    unmatched_count += 1
+
+                data_images.append({
+                    "raw_img_url": old_url,
+                    "product_img_url": match.get("img_url") if matched else "",
+                    "product_img_id": match.get("id") if matched else "",
+                    "matched": matched,
+                    "needs_upload": needs_upload
+                })
+
+            results.append({
+                "variant_id": variant_id,
+                "variant_title": variant_title,
+                "data_images": data_images
+            })
+
+        return {
+            "results": results,
+            "unmatched_count": unmatched_count
+        }
+
+    def put_images_into_metafield(self, data, delete_existing=False):
+        summary = {
+            "success": [],
+            "skipped": [],
+            "errors": []
+        }
+
+        metafields_payload = []
+
+        # Loop over variants and build payload
+        for variant in data:
+            variant_id = variant.get("variant_id")
+            variant_title = variant.get("variant_title", "")
+            data_images = variant.get("data_images", [])
+
+            if delete_existing:
+                image_ids = []
+            else:
+                image_ids = [
+                    img.get("product_img_id") for img in data_images if img.get("product_img_id")
+                ]
+
+                if not image_ids:
+                    summary["skipped"].append({
+                        "variant_id": variant_id,
+                        "variant_title": variant_title,
+                        "reason": "No valid image IDs found to populate."
+                    })
+                    continue
+
+
+            metafields_payload.append({
+                "ownerId": variant_id,
+                "namespace": "custom",
+                "key": "variant_images",
+                "type": "list.file_reference",
+                "value": json.dumps(image_ids)
+            })
+        
+        # If there's nothing to send
+        if not metafields_payload:
+            return summary
+
+        variables = {
+            "metafields": metafields_payload
+        }
+
+        # Send request once
+        try:
+            builder = MetafieldMutationBuilder()
+            query = builder.build()
+            response = shopify_request(
+                query=query,
+                shop_url=self.shop_url,
+                access_token=self.access_token,
+                variables=variables
+            )
+            json_data = response.json()
+
+            # 1. Top-level GraphQL errors
+            if "errors" in json_data:
+                for idx, graphql_error in enumerate(json_data["errors"]):
+                    variant_id, variant_title = resolve_variant_info(idx, metafields_payload, data)
+                    summary["errors"].append({
+                        "variant_id": variant_id,
+                        "variant_title": variant_title,
+                        "graphql_error": graphql_error
+                    })
+                return summary
+
+            metafields_set = json_data.get("data", {}).get("metafieldsSet", {})
+            user_errors = metafields_set.get("userErrors", [])
+            metafields = metafields_set.get("metafields", [])
+
+            # 2. Process user errors
+            for err in user_errors:
+                field_path = err.get("field", [])
+                idx = None
+                try:
+                    idx = int(field_path[1])
+                except (IndexError, ValueError, TypeError):
+                    pass
+
+                variant_id, variant_title = resolve_variant_info(idx, metafields_payload, data)
+                summary["errors"].append({
+                    "variant_id": variant_id,
+                    "variant_title": variant_title,
+                    "user_error": err
+                })
+
+            # 3. Process successes
+            for idx, mf in enumerate(metafields):
+                metafield_id = mf.get("id")
+                
+                # Fall back to index-based mapping since response lacks ownerId
+                variant = data[idx] if idx < len(data) else {}
+
+                variant_id = variant.get("variant_id")
+                variant_title = variant.get("variant_title", "")
+                image_count = len([
+                    img for img in variant.get("data_images", [])
+                    if img.get("product_img_id")
+                ])
+
+                summary["success"].append({
+                    "variant_id": variant_id,
+                    "variant_title": variant_title,
+                    "image_count": image_count,
+                    "metafield_id": metafield_id
+                })
+
+
+        except Exception as e:
+            summary["errors"].append({
+                "type": "exception",
+                "message": str(e)
+            })
+
+        return summary
+
+    def populate_images(self):        
+        return "doing nothing for now"
+
+    def delete_asset_images_from_metafield(self):
+        data = []
+        for var in self.get_variants():
+            variant_id = var.get("variant_id")
+            variant_title = var.get("variant_title")
+            data_images = []
+            data.append({
+                "variant_id": variant_id,
+                "variant_title": variant_title,
+                "data_images": data_images
+            })
+
+        return self.put_images_into_metafield(data, delete_existing=True)
+        
