@@ -34,45 +34,32 @@ query GetAllProducts (
             }
           }
         {% endif %}
-        {% if include_variants %}
-          variants(first: {{ variants_limit }}) {
-            nodes {
-              title
-              id
-              {% if include_variant_images_raw_url %}
-                imagesUrl: metafield(namespace: "custom", key: "variant_images_url") {
-                  jsonValue
-                }
-              {% endif %}
-              assetImages: metafield(namespace: "custom", key: "variant_images") {
-                {% if is_filled %}
-                  first: references(first: 1) {
-                    nodes {
-                      ... on MediaImage {
-                        id
-                        image {
-                          url
-                        }
-                      }
-                    }
-                  }
-                {% endif %}
-                {% if include_filled_variant_images_assets %}
-                  images: references(first: 250) {
-                    nodes {
-                      ... on MediaImage {
-                        id
-                        image {
-                          url
-                        }
-                      }
-                    }
-                  }
-                {% endif %}
-              }
+        variants(first: {{ variants_limit }}) {
+          nodes {
+            title
+            id
+            imagesUrl: metafield(namespace: "custom", key: "variant_images_url") {
+              jsonValue
             }
+            assetImagesJson: metafield(namespace: "custom", key: "variant_images") {
+              jsonValue
+            }
+            {% if include_filled_variant_images_assets %}
+              assetImages: metafield(namespace: "custom", key: "variant_images") {
+                images: references(first: 250) {
+                  nodes {
+                    ... on MediaImage {
+                      id
+                      image {
+                        url
+                      }
+                    }
+                  }
+                }
+              }
+            {% endif %}
           }
-        {% endif %}
+        }
       }
     }
     pageInfo {

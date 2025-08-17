@@ -33,9 +33,6 @@ def products():
     graphql_query = builder.build(
         include_media=True,
         variants_limit=100,
-        include_variants=True,
-        include_variant_images_raw_url=True,
-        is_filled=True,
         include_filled_variant_images_assets=False
     )
     response = shopify_request(query=graphql_query, shop_url=store["url"], access_token=store["token"], variables=variables)
@@ -49,7 +46,8 @@ def products():
     products = []
     for edge in json_data['data']['products']['edges']:
         product = ShopifyProductBuilder(edge['node'], store['name'])
-        products.append(product.details())
+        if not show_incompleted or not product.is_filled_images():
+            products.append(product.details())
 
     page_info = json_data['data']['products']['pageInfo']
     end_cursor = page_info['endCursor']

@@ -56,7 +56,7 @@ class ShopifyProductBuilder:
         all_variant_image_count = 0
         for idx, variant in enumerate(variants, start=1):
             variant_title = variant.get("variant_title")
-            asset_images = variant.get("asset_images")
+            asset_images = variant.get("asset_images_json")
             image_urls = variant.get("raw_image_urls")
             count_assets = len(asset_images)
             count_urls = len(image_urls)
@@ -89,10 +89,7 @@ class ShopifyProductBuilder:
     def _fetch_product(self):
         builder = ProductQueryBuilder()
         query = builder.build(include_media=True, 
-                              variants_limit=100, 
-                              include_variants=True, 
-                              include_variant_images_raw_url=True, 
-                              is_filled=True, 
+                              variants_limit=100,
                               include_filled_variant_images_assets=False)
         variables = {"id": self.product_id}
 
@@ -157,13 +154,14 @@ class ShopifyProductBuilder:
         for variant in variants:
             raw_image_urls = []
             image_urls = variant.get("imagesUrl", {}).get("jsonValue", [])
+            asset_images_json = variant.get("assetImagesJson", {}).get("jsonValue", [])
 
-            raw_asset_images = variant.get("assetImages")
+            raw_asset_images = variant.get("assetImages", [])
             nodes = []
 
             if isinstance(raw_asset_images, dict):
                 nodes = (
-                    raw_asset_images.get("images") or raw_asset_images.get("first") or {}
+                    raw_asset_images.get("images") or {}
                 ).get("nodes", [])
 
             asset_images = []
@@ -186,9 +184,10 @@ class ShopifyProductBuilder:
                 "variant_id": variant.get("id"),
                 "raw_image_urls": raw_image_urls,
                 "asset_images": asset_images,
+                "asset_images_json": asset_images_json,
                 "images_count": len(raw_image_urls),
                 # "all_data": variant,
-                "filled_images": bool(asset_images)
+                "filled_images": bool(asset_images_json)
             })
 
         return variant_data

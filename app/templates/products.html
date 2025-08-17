@@ -160,12 +160,12 @@
   
         {% if data.has_previous_page and data.start_cursor %}
           <li class="page-item">
-            <a class="page-link" href="{{ url_for('main.products', limit=data.limit, before=data.start_cursor, start=data.start-data.limit, q=data.query, showIncompleted=data.show_incompleted, store=data.store) }}">Previous Page</a>
+            <a class="page-link" href="{{ url_for('main.products', limit=data.limit, before=data.start_cursor, start=data.start-data.limit, q=data.query, showIncompleted=data.show_incompleted, store=data.current_store_key) }}">Previous Page</a>
           </li>
         {% endif %}
         {% if data.has_next_page and data.end_cursor %}
           <li class="page-item">
-            <a class="page-link" href="{{ url_for('main.products', limit=data.limit, after=data.end_cursor, start=data.end+1, q=data.query, showIncompleted=data.show_incompleted, store=data.store) }}">Next Page</a>
+            <a class="page-link" href="{{ url_for('main.products', limit=data.limit, after=data.end_cursor, start=data.end+1, q=data.query, showIncompleted=data.show_incompleted, store=data.current_store_key) }}">Next Page</a>
           </li>
         {% endif %}
           
