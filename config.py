@@ -12,6 +12,4 @@ class DevelopmentConfig(Config):
     SQLALCHEMY_DATABASE_URI = os.getenv("DEV_DATABASE_URI", "sqlite:///dev.db")
 
 class ProductionConfig(Config):
-    DEBUG = False
-    TEMPLATES_AUTO_RELOAD = False
     SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URI", "sqlite:///prod.db")
