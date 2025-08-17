@@ -2,7 +2,7 @@ from urllib.parse import urlparse, unquote
 from flask import json
 import requests
 import os
-from app.graphql_queries.query_builders.query_builders import ImageMutationBuilder, MetafieldMutationBuilder, ProductQueryBuilder
+from app.graphql_queries.query_builders.query_builders import ImageMutationBuilder, MetafieldMutationBuilder
 
 SHOPIFY_API_VERSION = os.getenv("SHOPIFY_API_VERSION")
 

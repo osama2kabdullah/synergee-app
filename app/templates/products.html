@@ -124,19 +124,19 @@
                     <li><strong>Product Images:</strong> {{ product.media_count }}</li>
                     <li><strong>Variant Images:</strong> {{ product.total_variant_images_count }}</li>
                     <li class="is_filled"><strong>Images Filled:</strong> {{ "✅ Yes" if product.is_filled_images else "❌ No" }}</li>
-                    {% if product.has_errors %}
-                      <div class="alert errors alert-danger mt-2">
-                        <strong>Errors:</strong>
-                        <ol class="mb-0">
-                          {% for error in product.errors %}
-                            <li>{{ error }}</li>
-                          {% endfor %}
-                        </ol>
-                      </div>
-                    {% endif %}
                   </ul>
 
                   <div class="result"></div>
+                  <div class="errors alert alert-danger {% if product.has_errors %}d-block{% else %}d-none{% endif %} mt-2">
+                    {% if product.has_errors %}
+                      <strong>Errors:</strong>
+                      <ol class="mb-0">
+                        {% for error in product.errors %}
+                          <li>{{ error }}</li>
+                        {% endfor %}
+                      </ol>
+                    {% endif %}
+                  </div>
 
                   <!-- Buttons -->
                   <div class="mt-auto">

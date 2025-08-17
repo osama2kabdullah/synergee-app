@@ -156,6 +156,8 @@ class ProductHandler {
     const errorsEl = card.querySelector(".errors");
 
     if (errorsEl) errorsEl.classList.add("d-none");
+    resultEl.innerHTML = ""; // clear previous result
+
     try {
       const response = await fetch("/api/populate-single-product", {
         method: "POST",
@@ -163,38 +165,28 @@ class ProductHandler {
         body: JSON.stringify({ product_id: productId, current_store_key: currentStoreKey }),
       }).then(res => res.json());
 
-      console.log("Server response:", response);
-
       resultEl.innerHTML = `<p>${response.message}</p>`;
+      if (response.data?.details?.length) {
+        resultEl.innerHTML += `<ol>${response.data.details.map(d => `<li>${d.variant_title}</li>`).join('')}</ol>`;
+      }
+      if (response.data?.errors?.length && errorsEl) {
+        errorsEl.classList.remove("d-none");
+        errorsEl.innerHTML = `<strong>Errors:</strong><ol class="mb-0">${response.data.errors.map(e => `<li>${e}</li>`).join("")}</ol>`;
+      }
 
       if (response.status === "success") {
-        // success flow: hide populate, show delete
         button.classList.add("d-none");
         deleteBtn.classList.remove("d-none");
-
         card.querySelector(".is_filled").innerHTML = `<strong>Images Filled:</strong> ✅ Yes`;
-        return true;
       } else {
-        // error flow
-        button.disabled = false;
-        button.innerHTML = "Populate Images";
-
-        if (response.data?.next_step === "retry_upload") {
-          resultEl.innerHTML += `<p>⚠️ Some images are still uploading. Please try again in a moment.</p>`;
-        }
-
-        if (response.message.includes("unmatched")) {
-          this.showUnmatchedImages(response, productId);
-        }
-
-        return false;
       }
+      button.disabled = false;
+      button.innerHTML = "Populate Images";
     } catch (err) {
-      console.error("Populate error:", err);
+      console.error(err);
       resultEl.innerHTML = `<p>🚨 Something went wrong. Please try again.</p>`;
       button.disabled = false;
       button.innerHTML = "Populate Images";
-      return false;
     }
   }
 
@@ -207,6 +199,8 @@ class ProductHandler {
     const errorsEl = card.querySelector(".errors");
 
     if (errorsEl) errorsEl.classList.add("d-none");
+    resultEl.innerHTML = ""; // clear previous result
+
     try {
       const response = await fetch("/api/delete-populated-single-product", {
         method: "POST",
@@ -214,32 +208,28 @@ class ProductHandler {
         body: JSON.stringify({ product_id: productId, current_store_key: currentStoreKey }),
       }).then(res => res.json());
 
-      console.log("Delete response:", response);
-
       resultEl.innerHTML = `<p>${response.message}</p>`;
+      if (response.data?.details?.length) {
+        resultEl.innerHTML += `<ul>${response.data.details.map(d => `<li>${d.variant_title}: ${d.data_images?.map(img => `<a href="${img.src}" target="_blank">image</a>`).join(", ") || "No images"}</li>`).join("")}</ul>`;
+      }
+      if (response.data?.errors?.length && errorsEl) {
+        errorsEl.classList.remove("d-none");
+        errorsEl.innerHTML = `<strong>Errors:</strong><ol class="mb-0">${response.data.errors.map(e => `<li>${e}</li>`).join("")}</ol>`;
+      }
 
       if (response.status === "success") {
-        // success flow: hide delete, show populate
         button.classList.add("d-none");
         populateBtn.classList.remove("d-none");
-
         card.querySelector(".is_filled").innerHTML = `<strong>Images Filled:</strong> ❌ No`;
-        return true;
       } else {
-        button.disabled = false;
-        button.innerHTML = "Delete Images";
-
-        if (response.data?.next_step === "populate_first") {
-          resultEl.innerHTML += `<p>⚠️ No images found to delete. Try populating first.</p>`;
-        }
-        return false;
       }
+      button.disabled = false;
+      button.innerHTML = "Delete Asset Images";
     } catch (err) {
-      console.error("Delete error:", err);
+      console.error(err);
       resultEl.innerHTML = `<p>🚨 Something went wrong. Please try again.</p>`;
       button.disabled = false;
-      button.innerHTML = "Delete Images";
-      return false;
+      button.innerHTML = "Delete Asset Images";
     }
   }
 

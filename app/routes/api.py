@@ -20,7 +20,6 @@ def delete_populated_single_product():
         return error_response(f"Store '{data.get('current_store_key')}' not configured.", 404)
 
     product_id = ShopifyGIDBuilder('Product').build(data['product_id'])
-
     builder = ProductQueryBuilder()
     query = builder.build(include_media=False, variants_limit=100, include_filled_variant_images_assets=False)
     variables = {"id": product_id}
@@ -36,18 +35,24 @@ def delete_populated_single_product():
     if not product.is_filled_images():
         return error_response(
             message="No asset images found to delete ⚠️",
-            data={"next_step": "populate_first"}
+            data={"next_step": "populate_first", "details": []}
         )
 
     result = product.delete_asset_images_from_metafield()
 
+    response_data = {"details": result.get("deleted_images", [])}
+
     if result.get("errors"):
-        return error_response("Failed to delete images from Shopify metafields.", data=result)
+        response_data["errors"] = result["errors"]
+        return error_response(
+            "Failed to delete images from Shopify metafields.",
+            data=response_data
+        )
 
     return success_response(
         message="Images successfully deleted",
         status="success",
-        data=result
+        data=response_data
     )
 
 @main.route('/api/populate-single-product', methods=['POST'])
@@ -76,21 +81,26 @@ def populate_single_product():
         return error_response("Product data not available", 404)
 
     if product.is_filled_images():
-        return success_response(message="All images are already populated 🎉", status="success")
+        return success_response(
+            message="All images are already populated 🎉",
+            status="success",
+            data={"details": product.data_for_client_display()}
+        )
 
-    data = product.data_for_put_into_metafield()
+    data_to_upload = product.data_for_put_into_metafield()
 
-    # try uploading missing images
-    if data.get("unmatched_count") > 0:
-        product.create_not_found_images(data.get("results"), parent_dict=data)
+    # Create unmatched images if any
+    if data_to_upload.get("unmatched_count", 0) > 0:
+        product.create_not_found_images(data_to_upload.get("results"), parent_dict=data_to_upload)
 
-    if not data.get("results"):
-        return error_response("No images found to populate.")
+    # No images found to populate
+    if not data_to_upload.get("results"):
+        return error_response("No images found to populate.", data={"details": data_to_upload.get("results")})
 
-    # check for pending
+    # Check if any images are still pending upload
     still_pending = any(
         img.get("needs_upload")
-        for variant in data.get("results", [])
+        for variant in data_to_upload.get("results", [])
         for img in variant.get("data_images", [])
     )
 
@@ -98,28 +108,31 @@ def populate_single_product():
         return error_response(
             message="Some images are still being uploaded. Please retry shortly.",
             data={
-                "unmatched_count": data.get("unmatched_count"),
-                "product_title": product.get_title(),
-                "media": product.get_media(),
-                "results": data.get("results"),
-                "image_creation_summary": data.get("image_creation_summary", {}),
+                "details": data_to_upload.get("results"),
+                "unmatched_count": data_to_upload.get("unmatched_count"),
                 "next_step": "retry_upload"
             }
         )
 
-    # push into metafield
-    result = product.put_images_into_metafield(data.get("results"), delete_existing=False)
+    # Push images into metafield
+    result = product.put_images_into_metafield(data_to_upload.get("results"), delete_existing=False)
+
+    response_data = {
+        "details": data_to_upload.get("results"),
+        "image_creation_summary": data_to_upload.get("image_creation_summary", {})
+    }
 
     if result.get("errors"):
+        response_data["errors"] = result["errors"]
         return error_response(
             "Failed to populate images into Shopify metafields.",
-            data={"errors": result["errors"], "image_creation_summary": data.get("image_creation_summary", {})}
+            data=response_data
         )
 
     return success_response(
         message="Images successfully populated",
         status="success",
-        data={"result": result, "image_creation_summary": data.get("image_creation_summary", {})}
+        data=response_data
     )
 
 @main.route('/api/populate-unmatched-images', methods=['POST'])
