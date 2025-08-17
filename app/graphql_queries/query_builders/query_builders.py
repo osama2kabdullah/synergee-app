@@ -41,3 +41,10 @@ class MetafieldMutationBuilder(GraphQLQueryBuilder):
 
     def build(self):
         return self.render()
+
+class ImageMutationBuilder(GraphQLQueryBuilder):
+    def __init__(self):
+        super().__init__("asset_set.graphql.j2")
+
+    def build(self):
+        return self.render()

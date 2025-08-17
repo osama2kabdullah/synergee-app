@@ -111,7 +111,7 @@
                 height="225" 
                 style="object-fit: cover;" />
                 
-                <div class="card-body">
+                <div class="card-body" data-current-store-key="{{ data.current_store_key }}">
                   <!-- Title -->
                   <span class="badge bg-secondary ">{{ product.store_name }}</span>
                   <a href="{{ product.preview_url }}" target="_blank" class="text-decoration-none">
@@ -123,24 +123,27 @@
                     <li><strong>Variants:</strong> {{ product.variant_count }}</li>
                     <li><strong>Product Images:</strong> {{ product.media_count }}</li>
                     <li><strong>Variant Images:</strong> {{ product.total_variant_images_count }}</li>
-                    <li><strong>Images Filled:</strong> {{ "✅ Yes" if product.is_filled_images else "❌ No" }}</li>
+                    <li class="is_filled"><strong>Images Filled:</strong> {{ "✅ Yes" if product.is_filled_images else "❌ No" }}</li>
                     {% if product.has_errors %}
-                      <li class="text-danger"><strong>Errors:</strong> {{ product.errors | join(', ') }}</li>
+                      <div class="alert errors alert-danger mt-2">
+                        <strong>Errors:</strong>
+                        <ol class="mb-0">
+                          {% for error in product.errors %}
+                            <li>{{ error }}</li>
+                          {% endfor %}
+                        </ol>
+                      </div>
                     {% endif %}
                   </ul>
 
+                  <div class="result"></div>
+
                   <!-- Buttons -->
                   <div class="mt-auto">
-                    {% if product.is_filled_images %}
-                    <!--
-                      <button disabled class="btn btn-success w-100 mb-2" data-product-id="{{ product.id }}">✅ Done</button>  
-                      -->
-                    {% else %}
-                      <button class="btn btn-outline-primary w-100 mb-2" data-populate-button data-product-id="{{ product.id }}">
-                        Populate Images
-                      </button>
-                    {% endif %}
-                    <button class="btn btn-outline-danger w-100" data-populate-button-delete data-product-id="{{ product.id }}">
+                    <button class="{% if product.is_filled_images %}d-none{% else %}d-block{% endif %} btn btn-outline-primary w-100 mb-2" data-populate-button data-product-id="{{ product.id }}">
+                      Populate Images
+                    </button>
+                    <button class="{% if product.is_filled_images %}d-block{% else %}d-none{% endif %} btn btn-outline-danger w-100" data-populate-button-delete data-product-id="{{ product.id }}">
                       Delete Asset Images
                     </button>
                   </div>

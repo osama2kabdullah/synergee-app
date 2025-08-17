@@ -1,0 +1,6 @@
+mutation FileCreate($files: [FileCreateInput!]!) {
+  fileCreate(files: $files) {
+    files { id fileStatus alt }
+    userErrors { field message }
+  }
+}

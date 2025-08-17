@@ -148,55 +148,97 @@ function getIcon(name) {
 
 class ProductHandler {
   async populate(button) {
-    
     const productId = button.dataset.productId.split("/").pop();
-    const resultEl = button.parentElement.querySelector(".result");
+    const card = button.closest(".card-body");
+    const currentStoreKey = card.dataset.currentStoreKey;
+    const deleteBtn = card.querySelector('button[data-populate-button-delete]');
+    const resultEl = card.querySelector(".result");
+    const errorsEl = card.querySelector(".errors");
 
+    if (errorsEl) errorsEl.classList.add("d-none");
     try {
       const response = await fetch("/api/populate-single-product", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ product_id: productId }),
+        body: JSON.stringify({ product_id: productId, current_store_key: currentStoreKey }),
       }).then(res => res.json());
-      if (response.message.includes("unmatched")) {
-        this.showUnmatchedImages(response, productId);
-      }
+
+      console.log("Server response:", response);
+
+      resultEl.innerHTML = `<p>${response.message}</p>`;
+
       if (response.status === "success") {
-        button.innerHTML = "✅ Done";
+        // success flow: hide populate, show delete
+        button.classList.add("d-none");
+        deleteBtn.classList.remove("d-none");
+
+        card.querySelector(".is_filled").innerHTML = `<strong>Images Filled:</strong> ✅ Yes`;
         return true;
       } else {
-        button.innerHTML = "❌ Error";
+        // error flow
         button.disabled = false;
+        button.innerHTML = "Populate Images";
+
+        if (response.data?.next_step === "retry_upload") {
+          resultEl.innerHTML += `<p>⚠️ Some images are still uploading. Please try again in a moment.</p>`;
+        }
+
+        if (response.message.includes("unmatched")) {
+          this.showUnmatchedImages(response, productId);
+        }
+
         return false;
       }
-    } catch {
-      button.innerHTML = "❌ Error";
+    } catch (err) {
+      console.error("Populate error:", err);
+      resultEl.innerHTML = `<p>🚨 Something went wrong. Please try again.</p>`;
       button.disabled = false;
+      button.innerHTML = "Populate Images";
       return false;
     }
   }
 
   async delete(button) {
     const productId = button.dataset.productId.split("/").pop();
+    const card = button.closest(".card-body");
+    const currentStoreKey = card.dataset.currentStoreKey;
+    const populateBtn = card.querySelector('button[data-populate-button]');
+    const resultEl = card.querySelector(".result");
+    const errorsEl = card.querySelector(".errors");
 
+    if (errorsEl) errorsEl.classList.add("d-none");
     try {
       const response = await fetch("/api/delete-populated-single-product", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ product_id: productId }),
+        body: JSON.stringify({ product_id: productId, current_store_key: currentStoreKey }),
       }).then(res => res.json());
 
+      console.log("Delete response:", response);
+
+      resultEl.innerHTML = `<p>${response.message}</p>`;
+
       if (response.status === "success") {
-        button.innerHTML = "✅ Done";
+        // success flow: hide delete, show populate
+        button.classList.add("d-none");
+        populateBtn.classList.remove("d-none");
+
+        card.querySelector(".is_filled").innerHTML = `<strong>Images Filled:</strong> ❌ No`;
         return true;
       } else {
-        button.innerHTML = "❌ Error";
         button.disabled = false;
+        button.innerHTML = "Delete Images";
+
+        if (response.data?.next_step === "populate_first") {
+          resultEl.innerHTML += `<p>⚠️ No images found to delete. Try populating first.</p>`;
+        }
         return false;
       }
-    } catch {
-      button.innerHTML = "❌ Error";
+    } catch (err) {
+      console.error("Delete error:", err);
+      resultEl.innerHTML = `<p>🚨 Something went wrong. Please try again.</p>`;
       button.disabled = false;
+      button.innerHTML = "Delete Images";
       return false;
     }
   }

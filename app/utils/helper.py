@@ -2,9 +2,15 @@ from urllib.parse import urlparse, unquote
 from flask import json
 import requests
 import os
-from app.graphql_queries.query_builders.query_builders import MetafieldMutationBuilder, ProductQueryBuilder
+from app.graphql_queries.query_builders.query_builders import ImageMutationBuilder, MetafieldMutationBuilder, ProductQueryBuilder
 
 SHOPIFY_API_VERSION = os.getenv("SHOPIFY_API_VERSION")
+
+# Store credentials
+STORES = {
+    "shop1": {"name": os.getenv("SHOP1_NAME"), "url": os.getenv("SHOP1_URL"), "token": os.getenv("SHOP1_TOKEN")},
+    "shop2": {"name": os.getenv("SHOP2_NAME"), "url": os.getenv("SHOP2_URL"), "token": os.getenv("SHOP2_TOKEN")},
+}
 
 def shopify_headers(access_token):
     return {
@@ -43,74 +49,70 @@ def resolve_variant_info(idx, payload, data):
     )
     return variant_id, variant_title
 
+def fetch_single_product(query, variables, store):
+    try:
+        response = shopify_request(
+            query=query,
+            shop_url=store['url'],
+            access_token=store['token'],
+            variables=variables
+        )
+        json_data = response.json()
+        if "errors" in json_data:
+            return {"errors": json_data["errors"]}
+        
+        product_data = json_data.get("data", {}).get("product")
+        product = ShopifyProductBuilder(product_data, store)
+        return product
+
+    except Exception as e:
+        return {"errors": [f"Request or JSON parsing error: {e}"]}
+
 class ShopifyProductBuilder:
-    def __init__(self, product_data, store_name=None):
+    def __init__(self, product_data, store):
         self.product_data = product_data
         self.errors = []
-        self.store_name = store_name
+        self.store = store
         self.product_id = self.product_data['id']
         self._check_errors()
 
     def _check_errors(self):
         variants = self.get_variants()
         all_variant_image_count = 0
+        
         for idx, variant in enumerate(variants, start=1):
-            variant_title = variant.get("variant_title")
-            asset_images = variant.get("asset_images_json")
-            image_urls = variant.get("raw_image_urls")
-            count_assets = len(asset_images)
-            count_urls = len(image_urls)
+            title = variant.get("variant_title") or f"Variant {idx}"
+            assets = variant.get("asset_images_json") or []
+            urls = variant.get("raw_image_urls") or []
+            count_assets, count_urls = len(assets), len(urls)
             all_variant_image_count += count_urls
 
-            # Case 1: Asset images empty but image URLs exist
-            if count_assets == 0 and count_urls > 0:
-                self.errors.append(
-                    f"Variant {idx} (Title: {variant_title}) has no asset images but {count_urls} image URLs."
-                )
-
-            # Case 2: Image URLs empty but asset images exist
-            if count_urls == 0 and count_assets > 0:
-                self.errors.append(
-                    f"Variant {idx} (Title: {variant_title}) has {count_assets} asset images but no image URLs."
-                )
-
-            # Case 3: Count mismatch between asset images and image URLs
-            if count_assets != count_urls:
-                self.errors.append(
-                    f"Variant {idx} (Title: {variant_title}) has {count_assets} asset images but {count_urls} image URLs."
-                )
-
-            # Case 4: Both empty — this might be okay, but log if needed
+            # Case 1: Both empty
             if count_assets == 0 and count_urls == 0:
                 self.errors.append(
-                    f"Variant {idx} (Title: {variant_title}) has neither asset images nor image URLs."
+                    f"❌ {title} has neither asset images nor image URLs."
                 )
+                continue  # skip other checks
 
-    def _fetch_product(self):
-        builder = ProductQueryBuilder()
-        query = builder.build(include_media=True, 
-                              variants_limit=100,
-                              include_filled_variant_images_assets=False)
-        variables = {"id": self.product_id}
+            # Case 2: Only asset images missing
+            if count_assets == 0 and count_urls > 0:
+                self.errors.append(
+                    f"⚠️ {title} has {count_urls} image URLs but no asset images."
+                )
+                continue
 
-        try:
-            response = shopify_request(
-                query=query,
-                shop_url=self.shop_url,
-                access_token=self.access_token,
-                variables=variables
-            )
-            json_data = response.json()
-        except Exception as e:
-            self.errors.append(f"Request or JSON parsing error: {e}")
-            return
+            # Case 3: Only image URLs missing
+            if count_urls == 0 and count_assets > 0:
+                self.errors.append(
+                    f"⚠️ {title} has {count_assets} asset images but no image URLs."
+                )
+                continue
 
-        if "errors" in json_data:
-            self.errors.extend(json_data["errors"])
-        
-        product = json_data.get("data", {}).get("product")
-        if product:
-            self.product_data = product
+            # Case 4: Mismatch counts (both > 0 but unequal)
+            if count_assets != count_urls:
+                self.errors.append(
+                    f"⚠️ {title} has {count_assets} asset images but {count_urls} image URLs."
+                )
 
     def get_title(self):
         return self.product_data.get("title") if self.product_data else None
@@ -225,7 +227,7 @@ class ShopifyProductBuilder:
             "has_errors": self.has_errors(),
             "errors": self.get_errors(),
             "id": self.product_id,
-            "store_name": self.store_name,
+            "store_name": self.store['name'],
             "featured_image": self.get_featured_image()
         }
     
@@ -291,6 +293,120 @@ class ShopifyProductBuilder:
             "unmatched_count": unmatched_count
         }
 
+    def create_not_found_images(self, data: list, parent_dict: dict = None):
+        summary = {
+            "attempted_to_upload": 0,
+            "successfully_uploaded": 0,
+            "failed_uploads": 0,
+            "failed_images": []
+        }
+
+        # collect all images that need upload
+        upload_candidates = []
+        for variant in data:
+            for idx, img in enumerate(variant.get("data_images", [])):
+                if img.get("needs_upload"):
+                    raw_url = img.get("raw_img_url")
+                    summary["attempted_to_upload"] += 1
+
+                    if not raw_url:
+                        summary["failed_uploads"] += 1
+                        summary["failed_images"].append({
+                            "variant_id": variant.get("variant_id"),
+                            "raw_url": raw_url,
+                            "error": "Missing raw_url"
+                        })
+                        continue
+
+                    # build identifier for mapping later using normalized name
+                    normalized = get_normalized_name(raw_url)
+                    alt_key = f"{normalized}_{idx}"
+
+                    upload_candidates.append({
+                        "alt": alt_key,
+                        "contentType": "IMAGE",
+                        "originalSource": raw_url,
+                        "variant_id": variant.get("variant_id"),
+                        "image_ref": img
+                    })
+
+        if not upload_candidates:
+            if parent_dict is not None:
+                parent_dict["image_creation_summary"] = summary
+            return
+
+        # build GraphQL query
+        image_builder = ImageMutationBuilder()
+        query = image_builder.build()
+
+        # prepare input for Shopify
+        files_input = [
+            {
+                "alt": candidate["alt"],
+                "contentType": "IMAGE",
+                "originalSource": candidate["originalSource"]
+            }
+            for candidate in upload_candidates
+        ]
+
+        try:
+            response = shopify_request(
+                query=query,
+                shop_url=self.store['url'],
+                access_token=self.store['token'],
+                variables={"files": files_input}
+            )
+            json_data = response.json()
+
+            file_create = json_data.get("data", {}).get("fileCreate", {})
+            returned_files = file_create.get("files", [])
+            user_errors = file_create.get("userErrors", [])
+
+            # map success back to images
+            for f in returned_files:
+                alt_key = f.get("alt")
+                candidate = next((c for c in upload_candidates if c["alt"] == alt_key), None)
+                if not candidate:
+                    continue
+                img = candidate["image_ref"]
+                img["product_img_id"] = f["id"]
+                img["needs_upload"] = False
+                img["matched"] = True
+                summary["successfully_uploaded"] += 1
+
+            # map failures from userErrors
+            for err in user_errors:
+                summary["failed_uploads"] += 1
+                summary["failed_images"].append({
+                    "error": err.get("message"),
+                    "field": err.get("field"),
+                    "code": err.get("code")
+                })
+
+            # handle unexpected missing files
+            if not returned_files and not user_errors:
+                summary["failed_uploads"] += len(upload_candidates)
+                for c in upload_candidates:
+                    summary["failed_images"].append({
+                        "variant_id": c["variant_id"],
+                        "raw_url": c["originalSource"],
+                        "error": "No file returned from Shopify"
+                    })
+
+        except Exception as e:
+            # global failure
+            summary["failed_uploads"] += len(upload_candidates)
+            for c in upload_candidates:
+                summary["failed_images"].append({
+                    "variant_id": c["variant_id"],
+                    "raw_url": c["originalSource"],
+                    "error": str(e)
+                })
+
+        # attach summary to parent dict if provided
+        if parent_dict is not None:
+            parent_dict["image_creation_summary"] = summary
+
     def put_images_into_metafield(self, data, delete_existing=False):
         summary = {
             "success": [],
@@ -344,8 +460,8 @@ class ShopifyProductBuilder:
             query = builder.build()
             response = shopify_request(
                 query=query,
-                shop_url=self.shop_url,
-                access_token=self.access_token,
+                shop_url=self.store['url'],
+                access_token=self.store['token'],
                 variables=variables
             )
             json_data = response.json()

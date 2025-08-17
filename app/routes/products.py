@@ -1,14 +1,8 @@
 import os
 from app.graphql_queries.query_builders.query_builders import AllProductQueryBuilder
-from app.utils.helper import ShopifyProductBuilder, shopify_request
+from app.utils.helper import STORES, ShopifyProductBuilder, shopify_request
 from . import main
 from flask import render_template, request
-
-# Store credentials
-STORES = {
-    "shop1": {"name": os.getenv("SHOP1_NAME"), "url": os.getenv("SHOP1_URL"), "token": os.getenv("SHOP1_TOKEN")},
-    "shop2": {"name": os.getenv("SHOP2_NAME"), "url": os.getenv("SHOP2_URL"), "token": os.getenv("SHOP2_TOKEN")},
-}
 
 @main.route('/products')
 def products():
@@ -45,7 +39,7 @@ def products():
 
     products = []
     for edge in json_data['data']['products']['edges']:
-        product = ShopifyProductBuilder(edge['node'], store['name'])
+        product = ShopifyProductBuilder(edge['node'], store)
         if not show_incompleted or not product.is_filled_images():
             products.append(product.details())
 
