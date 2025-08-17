@@ -155,10 +155,9 @@ class ShopifyProductBuilder:
         variant_data = []
         for variant in variants:
             raw_image_urls = []
-            image_urls = variant.get("imagesUrl", {}).get("jsonValue", [])
-            asset_images_json = variant.get("assetImagesJson", {}).get("jsonValue", [])
-
-            raw_asset_images = variant.get("assetImages", [])
+            image_urls = (variant.get("imagesUrl") or {}).get("jsonValue", [])
+            asset_images_json = (variant.get("assetImagesJson") or {}).get("jsonValue", [])
+            raw_asset_images = variant.get("assetImages") or []
             nodes = []
 
             if isinstance(raw_asset_images, dict):

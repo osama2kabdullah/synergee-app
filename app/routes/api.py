@@ -89,6 +89,13 @@ def populate_single_product():
 
     data_to_upload = product.data_for_put_into_metafield()
 
+    # No images found to populate
+    if not any(variant.get("data_images") for variant in data_to_upload.get("results", [])):
+        return error_response(
+            "No images found to populate.",
+            data={"details": data_to_upload.get("results"), "next_step": "populate_first"}
+        )
+
     # Create unmatched images if any
     if data_to_upload.get("unmatched_count", 0) > 0:
         product.create_not_found_images(data_to_upload.get("results"), parent_dict=data_to_upload)
