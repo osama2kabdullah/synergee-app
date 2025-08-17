@@ -4,35 +4,19 @@ import requests
 import os
 from app.graphql_queries.query_builders.query_builders import MetafieldMutationBuilder, ProductQueryBuilder
 
-ACCESS_TOKEN = os.getenv("SHOPIFY_ACCESS_TOKEN")
-SHOP_URL = os.getenv("SHOPIFY_STORE_URL")
 SHOPIFY_API_VERSION = os.getenv("SHOPIFY_API_VERSION")
-SHOPIFY_GRAPHQL_URL = f"{SHOP_URL}/admin/api/{SHOPIFY_API_VERSION}/graphql.json"
 
-def shopify_headers():
-    return {
-        "Content-Type": "application/json",
-        "X-Shopify-Access-Token": ACCESS_TOKEN,
-    }
-
-def shopify_headers2(access_token):
+def shopify_headers(access_token):
     return {
         "Content-Type": "application/json",
         "X-Shopify-Access-Token": access_token,
     }
 
-def graphql_request(query, variables=None):
-    payload = {"query": query}
-    if variables:
-        payload["variables"] = variables
-    response = requests.post(SHOPIFY_GRAPHQL_URL, json=payload, headers=shopify_headers())
-    return response.json()
-
 def shopify_request(query, shop_url, access_token, variables=None):
     payload = {"query": query}
     if variables:
         payload["variables"] = variables
-    headers = shopify_headers2(access_token=access_token)
+    headers = shopify_headers(access_token=access_token)
     shopify_graphql_url = f"{shop_url}/admin/api/{SHOPIFY_API_VERSION}/graphql.json"
     response = requests.post(shopify_graphql_url, json=payload, headers=headers)
     return response
@@ -60,14 +44,47 @@ def resolve_variant_info(idx, payload, data):
     return variant_id, variant_title
 
 class ShopifyProductBuilder:
-    def __init__(self, product_id, shop_url, access_token):
-        self.product_id = ShopifyGIDBuilder("Product").build(product_id)
-        self.shop_url = shop_url
-        self.access_token = access_token
-
-        self.product_data = None
+    def __init__(self, product_data, store_name=None):
+        self.product_data = product_data
         self.errors = []
-        self._fetch_product()
+        self.store_name = store_name
+        self.product_id = self.product_data['id']
+        self._check_errors()
+
+    def _check_errors(self):
+        variants = self.get_variants()
+        all_variant_image_count = 0
+        for idx, variant in enumerate(variants, start=1):
+            variant_title = variant.get("variant_title")
+            asset_images = variant.get("asset_images")
+            image_urls = variant.get("raw_image_urls")
+            count_assets = len(asset_images)
+            count_urls = len(image_urls)
+            all_variant_image_count += count_urls
+
+            # Case 1: Asset images empty but image URLs exist
+            if count_assets == 0 and count_urls > 0:
+                self.errors.append(
+                    f"Variant {idx} (Title: {variant_title}) has no asset images but {count_urls} image URLs."
+                )
+
+            # Case 2: Image URLs empty but asset images exist
+            if count_urls == 0 and count_assets > 0:
+                self.errors.append(
+                    f"Variant {idx} (Title: {variant_title}) has {count_assets} asset images but no image URLs."
+                )
+
+            # Case 3: Count mismatch between asset images and image URLs
+            if count_assets != count_urls:
+                self.errors.append(
+                    f"Variant {idx} (Title: {variant_title}) has {count_assets} asset images but {count_urls} image URLs."
+                )
+
+            # Case 4: Both empty — this might be okay, but log if needed
+            if count_assets == 0 and count_urls == 0:
+                self.errors.append(
+                    f"Variant {idx} (Title: {variant_title}) has neither asset images nor image URLs."
+                )
 
     def _fetch_product(self):
         builder = ProductQueryBuilder()
@@ -149,12 +166,12 @@ class ShopifyProductBuilder:
                     raw_asset_images.get("images") or raw_asset_images.get("first") or {}
                 ).get("nodes", [])
 
-            assetImages = []
+            asset_images = []
             for node in nodes:
                 media_id = node.get("id")
                 img_url = node.get("image", {}).get("url")
                 if media_id and img_url:
-                    assetImages.append({
+                    asset_images.append({
                         "id": media_id,
                         "image_url": img_url
                     })
@@ -168,10 +185,10 @@ class ShopifyProductBuilder:
                 "variant_title": variant.get("title"),
                 "variant_id": variant.get("id"),
                 "raw_image_urls": raw_image_urls,
-                "assetImages": assetImages,
+                "asset_images": asset_images,
                 "images_count": len(raw_image_urls),
                 # "all_data": variant,
-                "filled_images": bool(assetImages)
+                "filled_images": bool(asset_images)
             })
 
         return variant_data
@@ -187,7 +204,6 @@ class ShopifyProductBuilder:
         return False
 
     def get_total_variant_images_count(self):
-        
         variants = self.get_variants()
         if not variants:
             return False
@@ -197,7 +213,7 @@ class ShopifyProductBuilder:
             total += variant.get("images_count", 0)
         return total
     
-    def as_summary_dict(self):
+    def details(self):
         return {
             "title": self.get_title(),
             "preview_url": self.get_preview_url(),
@@ -209,9 +225,19 @@ class ShopifyProductBuilder:
             "is_filled_images": self.is_filled_images(),
             "has_errors": self.has_errors(),
             "errors": self.get_errors(),
-            "populate_images": self.populate_images()
+            "id": self.product_id,
+            "store_name": self.store_name,
+            "featured_image": self.get_featured_image()
         }
-
+    
+    def get_featured_image(self):
+        if not self.product_data:
+            return False
+        media = self.product_data.get("featuredMedia")
+        if not media:
+            return False
+        return media['image']['url']
+    
     def has_errors(self):
         return len(self.errors) > 0
 
@@ -402,4 +428,3 @@ class ShopifyProductBuilder:
             })
 
         return self.put_images_into_metafield(data, delete_existing=True)
-        

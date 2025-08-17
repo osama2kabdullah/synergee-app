@@ -56,7 +56,7 @@ function handleDrop(imageLookup, e) {
   contentArea.replaceChildren(newImg);
   this.classList.add('filled');
   this.parentElement.classList.remove('error');
-  draggedImg.parentElement.style.display = 'none';
+  // draggedImg.parentElement.style.display = 'none';
 
   // Success highlight
   this.classList.add('drop-success');
@@ -68,7 +68,7 @@ function handleDrop(imageLookup, e) {
     delBtn.onclick = () => {
       contentArea.textContent = 'Drop here';
       this.classList.remove('filled');
-      draggedImg.parentElement.style.display = 'block';
+      // draggedImg.parentElement.style.display = 'block';
 
         updateImageData({
           variant_id: raw_image.dataset.variantId,
@@ -572,17 +572,21 @@ class CustomModal {
   }
 
   close() {
-    this.bsModal.hide();
-    this.bsModal.dispose();
-    this.modalElement.remove();
+    // Listen for Bootstrap's hidden event before cleanup
+    this.modalElement.addEventListener('hidden.bs.modal', () => {
+      this.bsModal.dispose();
+      this.modalElement.remove();
 
-    CustomModal.modalStack.pop();
+      CustomModal.modalStack.pop();
 
-    // Restore previous modal if exists
-    const previousModal = CustomModal.modalStack.at(-1);
-    if (previousModal) {
-      previousModal.bsModal.show();
-    }
+      // Restore previous modal if exists
+      const previousModal = CustomModal.modalStack.at(-1);
+      if (previousModal) {
+        previousModal.bsModal.show();
+      }
+    }, { once: true });
+
+    this.bsModal.hide(); // Let Bootstrap handle removing modal-open & body styles
   }
 }
 

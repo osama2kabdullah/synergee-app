@@ -26,6 +26,21 @@ class ProductQueryBuilder(GraphQLQueryBuilder):
             variants_limit=variants_limit
         )
 
+class AllProductQueryBuilder(GraphQLQueryBuilder):
+    def __init__(self):
+        super().__init__("get_all_product.graphql.j2")
+
+    def build(self, include_media=False, include_variants=False, include_variant_images_raw_url=False,
+              variants_limit=2, is_filled=False, include_filled_variant_images_assets=False):
+        return self.render(
+            include_media=include_media,
+            include_variants=include_variants,
+            include_variant_images_raw_url=include_variant_images_raw_url,
+            is_filled=is_filled,
+            include_filled_variant_images_assets=include_filled_variant_images_assets,
+            variants_limit=variants_limit
+        )
+
 class MetafieldMutationBuilder(GraphQLQueryBuilder):
     def __init__(self):
         super().__init__("metafield_set.graphql.j2")

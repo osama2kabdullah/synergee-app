@@ -4,6 +4,13 @@ query GetProduct($id: ID!) {
     variantsCount { count }
     onlineStorePreviewUrl
     mediaCount { count }
+    featuredMedia {
+      ... on MediaImage {
+        image {
+          url
+        }
+      }
+    }
     {% if include_media %}
       media(query: "media_type:IMAGE", sortKey: POSITION, first: 250) {
         nodes {

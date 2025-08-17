@@ -1,7 +1,14 @@
-from app.queries.shopify_graphql_queries import QUERIES
-from app.utils.helper import graphql_request
+import os
+from app.graphql_queries.query_builders.query_builders import AllProductQueryBuilder
+from app.utils.helper import ShopifyProductBuilder, shopify_request
 from . import main
 from flask import render_template, request
+
+# Store credentials
+STORES = {
+    "shop1": {"name": os.getenv("SHOP1_NAME"), "url": os.getenv("SHOP1_URL"), "token": os.getenv("SHOP1_TOKEN")},
+    "shop2": {"name": os.getenv("SHOP2_NAME"), "url": os.getenv("SHOP2_URL"), "token": os.getenv("SHOP2_TOKEN")},
+}
 
 @main.route('/products')
 def products():
@@ -11,15 +18,10 @@ def products():
     after = request.args.get('after')
     before = request.args.get('before')
     start = int(request.args.get('start', 1))
-
-    data = {}
-
-    loaded_data = load_default_products(limit, after, before, start, query, show_incompleted)
-    data.update(loaded_data)
-
-    return render_template('products.html', data=data)
-
-def load_default_products(limit, after, before, start, query, show_incompleted):
+    current_store_key = request.args.get('store', 'shop1')
+    store = STORES.get(current_store_key)
+    if not store:
+        return render_template('products.html', data={"ok": False, "errors": [{"store": store['name'] if store else current_store_key, "error": "Store not configured"}]})
     variables = {
         "first": limit if not before else None,
         "last": limit if before else None,
@@ -27,102 +29,32 @@ def load_default_products(limit, after, before, start, query, show_incompleted):
         "before": before,
         "query": query,
     }
+    builder = AllProductQueryBuilder()
+    graphql_query = builder.build(
+        include_media=True,
+        variants_limit=100,
+        include_variants=True,
+        include_variant_images_raw_url=True,
+        is_filled=True,
+        include_filled_variant_images_assets=False
+    )
+    response = shopify_request(query=graphql_query, shop_url=store["url"], access_token=store["token"], variables=variables)
+    json_data = response.json()
+    if "errors" in json_data:
+        return render_template('products.html', data={"ok": False, "store": store['name'], "errors": json_data["errors"] })
+    
     end = (start + limit) - 1
     current_page = ((start - 1) // limit) + 1
-    response = graphql_request(QUERIES["all_products"], variables)
-    # response = graphql_request(QUERIES["err_all_products"], variables)
-    # Error handling
-    if "errors" in response:
-        return {
-            "ok": False,
-            "start": start,
-            "end": end,
-            "query": query,
-            "current_page_showing": 0,
-            "total_count": 0,
-            "products": [],
-            "errors": response["errors"],
-            "show_incompleted": show_incompleted,
-            "limit": limit,
-            "current_page": current_page,
-            "total_pages": 1,
-            "has_next_page": False,
-            "has_previous_page": False,
-            "start_cursor": None,
-            "end_cursor": None
-        }
 
     products = []
-    for edge in response['data']['products']['edges']:
-        node = edge['node']
-        variants = [v['node'] for v in node['variants']['edges']]
+    for edge in json_data['data']['products']['edges']:
+        product = ShopifyProductBuilder(edge['node'], store['name'])
+        products.append(product.details())
 
-        # Count all variant-level images from the metafield `variant_images_url`
-        all_variant_image_count = 0
-        filled_images = False
-
-        for variant in variants:
-            asset_images = variant.get("assetImages")
-            
-            if asset_images is not None:
-                file_images = (variant.get("assetImages") or {}).get("jsonValue", [])
-                if isinstance(file_images, list) and file_images:
-                    filled_images = True
-                    break
-        # print(f"{asset_images}\n\n - {image_urls}\n\n")
-
-        image_has_issue = True  # Assume issue by default
-
-        all_matched = True  # Track if every variant matches
-
-        for variant in variants:
-            asset_images = variant.get("assetImages") or {}
-            image_urls = variant.get("imagesUrl") or {}
-
-            count_assets = len(asset_images.get("jsonValue", []))
-            count_urls = len(image_urls.get("jsonValue", []))
-
-            # print(f"{count_assets} - {count_urls}")
-
-            if count_assets != count_urls:
-                all_matched = False  # Found a mismatch
-
-        # Final decision
-        if all_matched:
-            image_has_issue = False
-
-        # print(node["title"], "\n\nFinal issue flag:", image_has_issue, "\n\n")
-
-
-        for variant in variants:
-            images_url = (variant.get("imagesUrl") or {}).get("jsonValue", [])
-            if isinstance(images_url, list):
-                all_variant_image_count += len(images_url)
-
-        product = {
-            "id": node["id"],
-            "title": node["title"],
-            "url": node["onlineStorePreviewUrl"],
-            "variantsCount": node["variantsCount"]["count"],
-            "imagesCount": node["mediaCount"]["count"],
-            "variants": variants,
-            "image_url": node['images']['edges'][0]['node']['originalSrc'] if node['images']['edges'] else None,
-            "all_variant_level_image_count": all_variant_image_count,
-            "filled_images": filled_images,
-            "image_has_issue": image_has_issue
-        }
-        # Append all products if not filtering; otherwise only incomplete ones
-        if not show_incompleted or not filled_images:
-            products.append(product)
-        # if image_has_issue:
-        #     products.append(product)
-
-
-    page_info = response['data']['products']['pageInfo']
-    print('pag', page_info)
+    page_info = json_data['data']['products']['pageInfo']
     end_cursor = page_info['endCursor']
     start_cursor = page_info['startCursor']
-    total_count = response['data']['productsCount']['count']
+    total_count = json_data['data']['productsCount']['count']
     total_pages = ((total_count - 1) // limit) + 1
 
     data = {
@@ -140,6 +72,7 @@ def load_default_products(limit, after, before, start, query, show_incompleted):
         "show_incompleted": show_incompleted,
         "limit":limit,
         "current_page": current_page,
+        "current_store_key": current_store_key,
         "total_pages": total_pages
     }
-    return data
+    return render_template('products.html', data=data)
