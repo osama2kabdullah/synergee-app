@@ -1,0 +1,51 @@
+{% extends 'layout.html' %}
+
+{% block title %}Guidelines – Synergee App{% endblock %}
+
+{% block content %}
+<div class=" py-5">
+  <div class="container">
+    
+    <!-- Intro -->
+    <div class="text-center mb-5">
+      <h1 class="display-5 fw-semibold">Guidelines</h1>
+      <p class="lead text-muted">
+        Follow these simple steps to manage your Shopify product images safely and effectively.
+      </p>
+    </div>
+
+    <!-- Steps -->
+    <div class="row justify-content-center">
+      <div class="col-lg-8">
+        <ol class="list-group list-group-numbered shadow-sm">
+          <li class="list-group-item">
+            <strong>Choose a store</strong> – Start by selecting the store you want to work with.
+          </li>
+          <li class="list-group-item">
+            <strong>Browse or search products</strong> – Use filters to quickly find what you need.
+          </li>
+          <li class="list-group-item">
+            <strong>Show Incompleted</strong> – Focus on products missing populated images.
+          </li>
+          <li class="list-group-item">
+            <strong>Populate Images</strong> – Write product variant images to metafields in seconds.
+          </li>
+          <li class="list-group-item">
+            <strong>Delete Asset Images</strong> – Clean up previously populated images if needed.
+          </li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- Note -->
+    <div class="row justify-content-center mt-5">
+      <div class="col-lg-6">
+        <div class="alert alert-info small text-center shadow-sm mb-0">
+          No customer data is read or stored. Only product and variant images are handled.
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

@@ -1,39 +1,101 @@
-<header data-bs-theme="dark">
-  <div class="text-bg-dark collapse" id="navbarHeader">
-    <div class="container">
-      <div class="row">
-        <div class="col-sm-8 col-md-7 py-4">
-          <h4>About Me</h4>
-          <p class="text-body-secondary">
-            Hi, I'm Md Abdullah from Bangladesh. I’m passionate about software development and began freelancing as a Shopify theme developer in July 2023. I specialize in coding and enjoy helping merchants enhance their stores through custom solutions. Along this journey, I’ve also developed a strong entrepreneurial mindset.
-          </p>
-        </div>
-        <div class="col-sm-4 offset-md-1 py-4">
-          <h4>Contact Me</h4>
-          <ul class="list-unstyled">
-            <li><a href="https://www.linkedin.com/in/md-abdullah-9121b5228" class="text-white" target="_blank">Connect on LinkedIn</a></li>
-            <li><a href="mailto:abdullah21673@hotmail.com" class="text-white">abdullah21673@hotmail.com</a></li>
-          </ul>
+<!--
+  <header data-bs-theme="dark">
+    <div class="text-bg-dark collapse" id="navbarHeader">
+      <div class="container">
+        <div class="row">
+          <div class="col-sm-8 col-md-7 py-4">
+            <h4>About Me</h4>
+            <p class="text-body-secondary">
+              Hi, I'm Md Abdullah from Bangladesh. I’m passionate about software development and began freelancing as a Shopify theme developer in July 2023. I specialize in coding and enjoy helping merchants enhance their stores through custom solutions. Along this journey, I’ve also developed a strong entrepreneurial mindset.
+            </p>
+          </div>
+          <div class="col-sm-4 offset-md-1 py-4">
+            <h4>Contact Me</h4>
+            <ul class="list-unstyled">
+              <li><a href="https://www.linkedin.com/in/md-abdullah-9121b5228" class="text-white" target="_blank">Connect on LinkedIn</a></li>
+              <li><a href="mailto:abdullah21673@hotmail.com" class="text-white">abdullah21673@hotmail.com</a></li>
+            </ul>
+          </div>
         </div>
       </div>
     </div>
-  </div>
-  <div class="navbar navbar-dark bg-dark shadow-sm">
+    <div class="navbar navbar-dark bg-dark shadow-sm">
+      <div class="container">
+        <a href="{{ url_for('main.products') }}" class="navbar-brand d-flex align-items-center">
+          <strong>Synergee App</strong>
+        </a>
+        <button
+          class="navbar-toggler collapsed"
+          type="button"
+          data-bs-toggle="collapse"
+          data-bs-target="#navbarHeader"
+          aria-controls="navbarHeader"
+          aria-expanded="false"
+          aria-label="Toggle navigation"
+        >
+          <span class="navbar-toggler-icon"></span>
+        </button>
+      </div>
+    </div>
+  </header>
+-->
+
+<header>
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
     <div class="container">
-      <a href="{{ url_for('main.products') }}" class="navbar-brand d-flex align-items-center">
-        <strong>Synergee App</strong>
+      <!-- Brand -->
+      <a class="navbar-brand fw-bold" href="{{ url_for('main.index') }}">
+        Synergee App
       </a>
-      <button
-        class="navbar-toggler collapsed"
-        type="button"
-        data-bs-toggle="collapse"
-        data-bs-target="#navbarHeader"
-        aria-controls="navbarHeader"
-        aria-expanded="false"
-        aria-label="Toggle navigation"
-      >
+
+      <!-- Toggler (for mobile) -->
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+        aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
         <span class="navbar-toggler-icon"></span>
       </button>
+
+      <!-- Menu -->
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav ms-auto align-items-lg-center">
+
+          <!-- Standard Links -->
+          {% set links = [
+            ('Home', 'main.index'),
+            ('Products', 'main.products'),
+            ('About', 'main.about'),
+            ('Guidelines', 'main.guidelines')
+          ] %}
+          {% for name, endpoint in links %}
+          <li class="nav-item mx-1">
+            <a class="nav-link {% if request.endpoint == endpoint %}btn btn-primary text-dark active{% else %}text-light{% endif %}" 
+               href="{{ url_for(endpoint) }}">{{ name }}</a>
+          </li>
+          {% endfor %}
+
+          {% if current_user.is_authenticated %}
+            <!-- Logged-in user dropdown -->
+            <li class="nav-item dropdown mx-1">
+              <a class="nav-link dropdown-toggle btn btn-outline-light text-light" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-person-circle"></i> {{ current_user.username }}
+              </a>
+              <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="{{ url_for('auth.logout') }}">Logout</a></li>
+              </ul>
+            </li>
+          {% else %}
+          <!-- Login/Register buttons -->
+          <li class="nav-item mx-1">
+            <a class="nav-link {% if request.endpoint == 'auth.login' %}btn btn-primary text-dark active{% else %}btn text-light{% endif %}" 
+               href="{{ url_for('auth.login') }}">Login</a>
+          </li>
+          <li class="nav-item mx-1">
+            <a class="nav-link {% if request.endpoint == 'auth.register' %}btn btn-primary text-dark active{% else %}btn text-light{% endif %}" 
+               href="{{ url_for('auth.register') }}">Register</a>
+          </li>
+          {% endif %}
+          
+        </ul>
+      </div>
     </div>
-  </div>
+  </nav>
 </header>

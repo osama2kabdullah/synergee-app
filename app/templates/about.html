@@ -1,8 +1,26 @@
 {% extends 'layout.html' %}
 
-{% block title %}About - My App{% endblock %}
+{% block title %}About – Synergee App{% endblock %}
 
 {% block content %}
-<h2>About This App</h2>
-<p>We rearrange Shopify images. Fast. Simple.</p>
+<div class="py-5">
+  <div class="container">
+
+    <h1 class="fw-semibold mb-3">About This App</h1>
+    <p class="lead text-muted mb-4">
+      Synergee App was built to solve a common Shopify pain: keeping product & variant images clean, consistent, and up to date.
+    </p>
+
+    <p class="mb-4">
+      Whether you manage a small store or a large catalog, our goal is simple: give you
+      <strong>speed, safety, and control</strong> over product images without the hassle.
+    </p>
+
+    <div class="d-flex gap-3">
+      <a href="{{ url_for('main.guidelines') }}" class="btn btn-primary btn-lg">Read Guidelines</a>
+      <a href="{{ url_for('main.products') }}" class="btn btn-outline-secondary btn-lg">Start Browsing</a>
+    </div>
+
+  </div>
+</div>
 {% endblock %}

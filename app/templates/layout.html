@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>{% block title %}My App{% endblock %}</title>
+    <title>{% block title %}Synergee App{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/fastbootstrap.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     {% block head %}{% endblock %}
@@ -12,7 +12,7 @@
         {% include 'partials/header.html' %}
     </header>
 
-    <main>
+    <main class="bg-body-tertiary" style="min-height: 80vh;">
         {% block content %}{% endblock %}
     </main>
 

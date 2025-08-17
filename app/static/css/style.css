@@ -39,3 +39,9 @@ img[draggable="true"] {
 svg {
   display: block;
 }
+
+.navbar .dropdown-toggle:hover,
+.navbar .dropdown-toggle.show {
+  color: #212529 !important;
+  background-color: #e2e6ea;
+}

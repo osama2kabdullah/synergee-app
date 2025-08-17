@@ -2,4 +2,4 @@ from flask import Blueprint
 
 main = Blueprint('main', __name__)
 
-from . import index, api, products
+from . import index, api, products, about, guidelines

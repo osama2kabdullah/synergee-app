@@ -1,16 +1,50 @@
 {% extends 'layout.html' %}
-{% import 'macros/ui_components.html' as ui %}
-{% from 'macros/ui_components.html' import button %}
 
-{% block title %}Home{% endblock %}
+{% block title %}Home – Synergee App{% endblock %}
 
 {% block content %}
-    <h1>Welcome</h1>
-    <p>This is the main content area.</p>
+<div class=" py-5">
+  <div class="container text-center">
 
-    {{ ui.button('Products', href='/products', style='success') }}
-    
-    {{ button('Buy Now', href='/checkout') }}
+    <!-- Hero -->
+    <h1 class="display-4 fw-bold mb-3">Welcome to Synergee App</h1>
+    <p class="lead text-muted mb-4">
+      The fastest way to audit, populate, and clean up your Shopify product images.
+    </p>
 
-    {{ ui.card('Fast', 'Our app rearranges Shopify images in seconds.') }}
+    <div class="d-flex justify-content-center gap-3 mb-5">
+      <a href="{{ url_for('main.products') }}" class="btn btn-success btn-lg">Browse Products</a>
+      <a href="{{ url_for('main.about') }}" class="btn btn-outline-secondary btn-lg">Learn More</a>
+    </div>
+
+    <!-- Feature Highlights -->
+    <div class="row g-4">
+      <div class="col-md-4">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body">
+            <h5 class="card-title">⚡ Speed</h5>
+            <p class="card-text text-muted">Rearrange and populate variant images in seconds.</p>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body">
+            <h5 class="card-title">🎯 Accuracy</h5>
+            <p class="card-text text-muted">Only missing images are filled — existing ones stay untouched.</p>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body">
+            <h5 class="card-title">🧼 Clean</h5>
+            <p class="card-text text-muted">Quickly delete asset images for a fresh start.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
 {% endblock %}

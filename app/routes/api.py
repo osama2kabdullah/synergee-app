@@ -1,12 +1,8 @@
-import os
 from app.graphql_queries.query_builders.query_builders import ProductQueryBuilder
-from app.utils.helper import STORES, ShopifyGIDBuilder, ShopifyProductBuilder, fetch_single_product
+from app.utils.helper import STORES, ShopifyGIDBuilder, fetch_single_product
 from . import main
-from flask import jsonify, request
+from flask import request
 from app.utils.response import success_response, error_response
-
-ACCESS_TOKEN = os.getenv("SHOPIFY_ACCESS_TOKEN")
-SHOP_URL = os.getenv("SHOPIFY_STORE_URL")
 
 @main.route('/api/delete-populated-single-product', methods=['POST'])
 def delete_populated_single_product():
@@ -145,12 +141,13 @@ def populate_single_product():
 @main.route('/api/populate-unmatched-images', methods=['POST'])
 def populate_unmatched_images():
     client_data = request.get_json()
+    return error_response('API archived', 404)
 
     if not client_data or 'product_id' not in client_data:
         return error_response('Missing product_id in request body', 400)
 
     product_id = client_data['product_id']
-    product = ShopifyProductBuilder(product_id=product_id, shop_url=SHOP_URL, access_token=ACCESS_TOKEN)
+    # product = ShopifyProductBuilder(product_id=product_id, shop_url=SHOP_URL, access_token=ACCESS_TOKEN)
 
     if not product.product_data:
         return error_response('Product data not available', 404)

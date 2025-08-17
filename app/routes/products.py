@@ -1,10 +1,11 @@
-import os
+from flask_login import login_required
 from app.graphql_queries.query_builders.query_builders import AllProductQueryBuilder
 from app.utils.helper import STORES, ShopifyProductBuilder, shopify_request
 from . import main
 from flask import render_template, request
 
 @main.route('/products')
+@login_required
 def products():
     query = request.args.get('q', '').strip()
     show_incompleted = request.args.get('showIncompleted', '1' if not request.args else '0') == '1'
