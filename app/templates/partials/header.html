@@ -76,7 +76,7 @@
             <!-- Logged-in user dropdown -->
             <li class="nav-item dropdown mx-1">
               <a class="nav-link dropdown-toggle btn btn-outline-light text-light" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                <i class="bi bi-person-circle"></i> {{ current_user.username }}
+                <i class="bi bi-person-circle"></i> {{ current_user.email }}
               </a>
               <ul class="dropdown-menu dropdown-menu-end">
                 <li><a class="dropdown-item" href="{{ url_for('auth.logout') }}">Logout</a></li>
