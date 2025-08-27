@@ -3,6 +3,8 @@ from flask import json
 import requests
 import os
 from app.graphql_queries.query_builders.query_builders import ImageMutationBuilder, MetafieldMutationBuilder
+from app.models import Product, Shop, Variant
+from app import db
 
 SHOPIFY_API_VERSION = os.getenv("SHOPIFY_API_VERSION")
 
@@ -146,6 +148,43 @@ class ShopifyProductBuilder:
             formatted.append({"id": media_id, "img_url": img_url, "name": assumed_name})
         return formatted
 
+    def get_id_from_image_url(self, url):
+        for media in self.get_media():
+            if media.get("name") == get_normalized_name(url):
+                return media.get("id")
+        
+        # build GraphQL query
+        image_builder = ImageMutationBuilder()
+        query = image_builder.build()
+
+        # prepare input for Shopify
+        files_input = [
+            {
+                "contentType": "IMAGE",
+                "originalSource": url
+            }
+        ]
+
+        try:
+            response = shopify_request(
+                query=query,
+                shop_url=self.store['url'],
+                access_token=self.store['token'],
+                variables={"files": files_input}
+            )
+            json_data = response.json()
+
+            file_create = json_data.get("data", {}).get("fileCreate", {})
+            returned_files = file_create.get("files", [])
+            user_errors = file_create.get("userErrors", [])
+
+            # map success back to images
+            for f in returned_files:
+                return f["id"]
+
+        except Exception as e:
+            return None
+
     def get_variants(self):
         if not self.product_data:
             return []
@@ -241,6 +280,139 @@ class ShopifyProductBuilder:
     def has_errors(self):
         return len(self.errors) > 0
 
+    def save_product_with_variants(self):
+        """
+        store_data: {"name": "...", "url": "..."}
+        product_data: {
+            "title": "...",
+            "shopify_id": "...",
+            "variants": [
+                {
+                    "shopify_id": "...",
+                    "urls": ["url1", "url2", ...]
+                },
+                ...
+            ]
+        }
+        """
+
+        # --- 1. Get or create shop ---
+        shop_domain = self.store['url']
+        shop_name = self.store['name']
+
+        shop = Shop.query.filter_by(domain=shop_domain).first()
+        if not shop:
+            shop = Shop(domain=shop_domain, name=shop_name)
+            db.session.add(shop)
+            db.session.commit()
+            print(f"[DB] Created new shop: {shop_name}")
+
+        # --- 2. Get or create product ---
+        product = Product.query.filter_by(shopify_id=self.product_id).first()
+        if not product:
+            product = Product(
+                shop_id=shop.id,
+                title=self.get_title(),
+                shopify_id=self.product_id
+            )
+            db.session.add(product)
+            db.session.commit()
+            print(f"[DB] Created new product: {self.get_title()}")
+
+        # --- 3. Process variants ---
+        for variant_info in self.get_variants():
+            variant = Variant.query.filter_by(shopify_id=variant_info['variant_id']).first()
+            incoming_urls = variant_info.get('raw_image_urls')
+            asset_images_json = variant_info.get('asset_images_json')
+
+            if not variant:
+                # --- New Variant ---
+                variant = Variant(
+                    product_id=product.id,
+                    shopify_id=variant_info['variant_id'],
+                    urls=incoming_urls
+                )
+                db.session.add(variant)
+                print(f"[DB] Created new variant ID: {variant_info['variant_id']}")
+
+                data_to_upload = self.data_for_put_into_metafield()
+                if not data_to_upload.get("results"):
+                    continue
+
+                if not any(v.get("data_images") for v in data_to_upload["results"]):
+                    continue
+
+                if data_to_upload.get("unmatched_count", 0) > 0:
+                    self.create_not_found_images_1(data_to_upload["results"], parent_dict=data_to_upload)
+
+                self.put_images_into_metafield(data_to_upload["results"], delete_existing=False)
+
+            else:
+                # --- Existing Variant ---
+                existing_urls = variant.urls or []
+                changes, removed, unchanged = [], [], []
+
+                # Compare URL lists
+                for idx, url in enumerate(incoming_urls):
+                    if idx >= len(existing_urls):
+                        changes.append((idx, None, url))
+                    elif existing_urls[idx] != url:
+                        changes.append((idx, existing_urls[idx], url))
+                    else:
+                        unchanged.append((idx, url))
+
+                for idx in range(len(incoming_urls), len(existing_urls)):
+                    removed.append((idx, existing_urls[idx]))
+
+                # --- Apply removals first ---
+                for pos, _ in sorted(removed, key=lambda x: x[0], reverse=True):
+                    if pos < len(asset_images_json):
+                        del asset_images_json[pos]
+
+                # --- Apply changes (add/update) ---
+                for pos, old, new in changes:
+                    new_id = self.get_id_from_image_url(new['url'])
+                    if not new_id:
+                        continue
+                    if pos < len(asset_images_json):
+                        asset_images_json[pos] = new_id
+                    else:
+                        asset_images_json.append(new_id)
+
+                # print("\nasset_images_json\n", asset_images_json)
+                # print('\n\n')
+                # continue
+
+                # --- Push updated metafields to Shopify ---
+                metafields_payload = [{
+                    "ownerId": variant_info['variant_id'],
+                    "namespace": "custom",
+                    "key": "variant_images",
+                    "type": "list.file_reference",
+                    "value": json.dumps(asset_images_json)
+                }]
+                print(f"[Shopify] Updating variant {variant_info['variant_id']} with {asset_images_json}")
+                # print("metafields_payload", metafields_payload)
+                # continue
+                try:
+                    response = shopify_request(
+                        query=MetafieldMutationBuilder().build(),
+                        shop_url=self.store['url'],
+                        access_token=self.store['token'],
+                        variables={"metafields": metafields_payload}
+                    )
+                    print("[Shopify] Response:", response.json())
+                except Exception as e:
+                    print("[Shopify] Error:", e)
+
+                # Ensure SQLAlchemy tracks this update
+                variant.urls = incoming_urls
+                db.session.add(variant)
+
+        # --- 4. Commit all changes once ---
+        db.session.commit()
+        print("[DB] All changes committed.")
+
     def get_errors(self):
         return self.errors
 
@@ -291,6 +463,122 @@ class ShopifyProductBuilder:
             "results": results,
             "unmatched_count": unmatched_count
         }
+
+    def create_not_found_images_1(self, data: list, parent_dict: dict = None):
+        summary = {
+            "attempted_to_upload": 0,
+            "successfully_uploaded": 0,
+            "failed_uploads": 0,
+            "failed_images": []
+        }
+
+        # collect all images that need upload
+        upload_candidates = []
+        for variant in data:
+            for idx, img in enumerate(variant.get("data_images", [])):
+                if img.get("needs_upload"):
+                    raw_url = img.get("raw_img_url")
+                    summary["attempted_to_upload"] += 1
+
+                    if not raw_url:
+                        summary["failed_uploads"] += 1
+                        summary["failed_images"].append({
+                            "variant_id": variant.get("variant_id"),
+                            "raw_url": raw_url,
+                            "error": "Missing raw_url"
+                        })
+                        continue
+
+                    # build identifier for mapping later using normalized name
+                    normalized = get_normalized_name(raw_url)
+                    alt_key = f"{normalized}_{idx}"
+
+                    upload_candidates.append({
+                        "alt": alt_key,
+                        "contentType": "IMAGE",
+                        "originalSource": raw_url,
+                        "variant_id": variant.get("variant_id"),
+                        "image_ref": img
+                    })
+
+        if not upload_candidates:
+            if parent_dict is not None:
+                parent_dict["image_creation_summary"] = summary
+            return
+
+        # build GraphQL query
+        image_builder = ImageMutationBuilder()
+        query = image_builder.build()
+
+        # prepare input for Shopify
+        files_input = [
+            {
+                "alt": candidate["alt"],
+                "contentType": "IMAGE",
+                "originalSource": candidate["originalSource"]
+            }
+            for candidate in upload_candidates
+        ]
+
+        try:
+            response = shopify_request(
+                query=query,
+                shop_url=self.store['url'],
+                access_token=self.store['token'],
+                variables={"files": files_input}
+            )
+            json_data = response.json()
+
+            file_create = json_data.get("data", {}).get("fileCreate", {})
+            returned_files = file_create.get("files", [])
+            user_errors = file_create.get("userErrors", [])
+
+            # map success back to images
+            for f in returned_files:
+                alt_key = f.get("alt")
+                candidate = next((c for c in upload_candidates if c["alt"] == alt_key), None)
+                if not candidate:
+                    continue
+                img = candidate["image_ref"]
+                img["product_img_id"] = f["id"]
+                img["needs_upload"] = False
+                img["matched"] = True
+                summary["successfully_uploaded"] += 1
+
+            # map failures from userErrors
+            for err in user_errors:
+                summary["failed_uploads"] += 1
+                summary["failed_images"].append({
+                    "error": err.get("message"),
+                    "field": err.get("field"),
+                    "code": err.get("code")
+                })
+
+            # handle unexpected missing files
+            if not returned_files and not user_errors:
+                summary["failed_uploads"] += len(upload_candidates)
+                for c in upload_candidates:
+                    summary["failed_images"].append({
+                        "variant_id": c["variant_id"],
+                        "raw_url": c["originalSource"],
+                        "error": "No file returned from Shopify"
+                    })
+
+        except Exception as e:
+            # global failure
+            summary["failed_uploads"] += len(upload_candidates)
+            for c in upload_candidates:
+                summary["failed_images"].append({
+                    "variant_id": c["variant_id"],
+                    "raw_url": c["originalSource"],
+                    "error": str(e)
+                })
+
+        # attach summary to parent dict if provided
+        if parent_dict is not None:
+            parent_dict["image_creation_summary"] = summary
+
+        print('\n\n', summary, '\n\n')
 
     def create_not_found_images(self, data: list, parent_dict: dict = None):
         summary = {

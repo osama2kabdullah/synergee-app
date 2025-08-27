@@ -1,7 +1,7 @@
 from app.graphql_queries.query_builders.query_builders import ProductQueryBuilder
 from app.utils.helper import STORES, ShopifyGIDBuilder, fetch_single_product
 from . import main
-from flask import request
+from flask import jsonify, request
 from app.utils.response import success_response, error_response
 
 @main.route('/api/delete-populated-single-product', methods=['POST'])
@@ -50,6 +50,30 @@ def delete_populated_single_product():
         status="success",
         data=response_data
     )
+
+@main.route('/api/canada-webhook', methods=['POST'])
+def canada_webhook():
+    data = request.json
+    store = STORES.get('shop2')
+    response = handle_product_change(data, store)
+    return jsonify({"status": "received"}), 200
+
+@main.route('/api/us-webhook', methods=['POST'])
+def us_webhook():
+    data = request.json
+    store = STORES.get('shop1')
+    response = handle_product_change(data, store)
+    return jsonify({"status": "received"}), 200
+
+def handle_product_change(data, store):
+    print("\n\nproduct id: ", data.get('admin_graphql_api_id'), ", store: ", store["name"])
+    print("\n\n")
+    product_id = data.get('admin_graphql_api_id')
+    builder = ProductQueryBuilder()
+    query = builder.build(include_media=True, variants_limit=100, include_filled_variant_images_assets=False)
+    variables = {"id": product_id}
+    product = fetch_single_product(query, variables, store)
+    saving = product.save_product_with_variants()
 
 @main.route('/api/populate-single-product', methods=['POST'])
 def populate_single_product():
