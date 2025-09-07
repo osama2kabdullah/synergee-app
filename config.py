@@ -1,7 +1,8 @@
 import os
 
 class Config:
-    SECRET_KEY = os.environ.get('SECRET_KEY')
+    # SECRET_KEY = os.environ.get('SECRET_KEY')
+    SECRET_KEY = "supersecretkey"
     DEBUG = False
     TEMPLATES_AUTO_RELOAD = False
     SQLALCHEMY_TRACK_MODIFICATIONS = False

@@ -1,8 +1,99 @@
-from app.graphql_queries.query_builders.query_builders import ProductQueryBuilder
-from app.utils.helper import STORES, ShopifyGIDBuilder, fetch_single_product
+from app.graphql_queries.query_builders.query_builders import AllProductQueryBuilder, ProductQueryBuilder
+from app.models import Shop
+from app.utils.helper import STORES, ShopifyGIDBuilder, ShopifyProductBuilder, fetch_single_product, shopify_request
 from . import main
-from flask import request
+from flask import jsonify, request
 from app.utils.response import success_response, error_response
+
+@main.route('/api/print', methods=['POST'])
+def print_api():
+    print('API button was clicked!')
+    # loop_over_all_stores()
+
+    shops_data = []
+
+    shops = Shop.query.all()
+    for shop in shops:
+        shop_dict = {
+            "id": shop.id,
+            "name": shop.name,
+            "domain": shop.domain,
+            "products": []
+        }
+
+        for product in shop.products:
+            product_dict = {
+                "id": product.id,
+                "title": product.title,
+                "shopify_id": product.shopify_id,
+                "variants": []
+            }
+
+            for variant in product.variants:
+                variant_dict = {
+                    "id": variant.id,
+                    "shopify_id": variant.shopify_id,
+                    "urls": variant.urls
+                }
+                product_dict["variants"].append(variant_dict)
+
+            shop_dict["products"].append(product_dict)
+
+        shops_data.append(shop_dict)
+
+    return jsonify({
+        "ok": True,
+        "shops": shops_data
+    }), 200
+
+def fetch_all_products(store, limit=250, after=None, before=None):
+    builder = AllProductQueryBuilder()
+    graphql_query = builder.build(
+        include_media=True,
+        variants_limit=100,
+        include_filled_variant_images_assets=False
+    )
+
+    products = []
+    has_next_page = True
+    after_cursor = after  # Start cursor (None by default)
+
+    while has_next_page:
+        variables = {
+            "first": limit if not before else None,
+            "last": limit if before else None,
+            "after": after_cursor,
+            "before": before,
+        }
+
+        response = shopify_request(
+            query=graphql_query,
+            shop_url=store["url"],
+            access_token=store["token"],
+            variables=variables
+        )
+        json_data = response.json()
+
+        if "errors" in json_data:
+            raise Exception(f"Shopify API error: {json_data['errors']}")
+
+        # Add products from this page
+        for edge in json_data['data']['products']['edges']:
+            product = ShopifyProductBuilder(edge['node'], store)
+            products.append(product)
+
+        # Pagination info
+        page_info = json_data['data']['products']['pageInfo']
+        has_next_page = page_info.get('hasNextPage', False)
+        after_cursor = json_data['data']['products']['edges'][-1]['cursor'] if has_next_page else None
+
+    return products
+
+def loop_over_all_stores():
+    for store in STORES.values():
+        products = fetch_all_products(store)
+        for product in products:
+            product.save_product_with_variants()
 
 @main.route('/api/delete-populated-single-product', methods=['POST'])
 def delete_populated_single_product():
@@ -50,6 +141,30 @@ def delete_populated_single_product():
         status="success",
         data=response_data
     )
+
+@main.route('/api/canada-webhook', methods=['POST'])
+def canada_webhook():
+    data = request.json
+    store = STORES.get('shop2')
+    response = handle_product_change(data, store)
+    return jsonify({"status": "received"}), 200
+
+@main.route('/api/us-webhook', methods=['POST'])
+def us_webhook():
+    data = request.json
+    store = STORES.get('shop1')
+    response = handle_product_change(data, store)
+    return jsonify({"status": "received"}), 200
+
+def handle_product_change(data, store):
+    print("\n\nproduct id: ", data.get('admin_graphql_api_id'), ", store: ", store["name"])
+    print("\n\n")
+    product_id = data.get('admin_graphql_api_id')
+    builder = ProductQueryBuilder()
+    query = builder.build(include_media=True, variants_limit=100, include_filled_variant_images_assets=False)
+    variables = {"id": product_id}
+    product = fetch_single_product(query, variables, store)
+    saving = product.save_product_with_variants()
 
 @main.route('/api/populate-single-product', methods=['POST'])
 def populate_single_product():
