@@ -80,7 +80,7 @@ def create_app():
         # Schedule for repeated runs
         scheduler.add_job(
             func=job_wrapper,
-            trigger=IntervalTrigger(minutes=10),   # change interval as needed
+            trigger=IntervalTrigger(minutes=5),   # change interval as needed
             id="loop_over_all_stores_job",
             name="Run loop_over_all_stores every 3 hours",
             max_instances=1,
