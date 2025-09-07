@@ -12,6 +12,7 @@ SHOPIFY_API_VERSION = os.getenv("SHOPIFY_API_VERSION")
 STORES = {
     "shop1": {"name": os.getenv("SHOP1_NAME"), "url": os.getenv("SHOP1_URL"), "token": os.getenv("SHOP1_TOKEN")},
     "shop2": {"name": os.getenv("SHOP2_NAME"), "url": os.getenv("SHOP2_URL"), "token": os.getenv("SHOP2_TOKEN")},
+    # "shop3": {"name": os.getenv("SHOP3_NAME"), "url": os.getenv("SHOP3_URL"), "token": os.getenv("SHOP3_TOKEN")},
 }
 
 def shopify_headers(access_token):
@@ -282,136 +283,126 @@ class ShopifyProductBuilder:
 
     def save_product_with_variants(self):
         """
-        store_data: {"name": "...", "url": "..."}
-        product_data: {
-            "title": "...",
-            "shopify_id": "...",
-            "variants": [
-                {
-                    "shopify_id": "...",
-                    "urls": ["url1", "url2", ...]
-                },
-                ...
-            ]
-        }
+        Save or update product with its variants.
+        Handles:
+        - Creating shop if missing
+        - Creating product if missing
+        - Creating/updating variants
+        - Only commits if there are changes
+        - Flushes to ensure product.id exists for variants
         """
 
-        # --- 1. Get or create shop ---
-        shop_domain = self.store['url']
-        shop_name = self.store['name']
+        anything_changed = False  # Track if we need to commit
 
-        shop = Shop.query.filter_by(domain=shop_domain).first()
-        if not shop:
-            shop = Shop(domain=shop_domain, name=shop_name)
-            db.session.add(shop)
-            db.session.commit()
-            print(f"[DB] Created new shop: {shop_name}")
+        try:
+            # --- 1. Get or create shop ---
+            shop_domain = self.store['url']
+            shop_name = self.store['name']
 
-        # --- 2. Get or create product ---
-        product = Product.query.filter_by(shopify_id=self.product_id).first()
-        if not product:
-            product = Product(
-                shop_id=shop.id,
-                title=self.get_title(),
-                shopify_id=self.product_id
-            )
-            db.session.add(product)
-            db.session.commit()
-            print(f"[DB] Created new product: {self.get_title()}")
+            with db.session.no_autoflush:
+                shop = Shop.query.filter_by(domain=shop_domain).first()
+                if not shop:
+                    shop = Shop(domain=shop_domain, name=shop_name)
+                    db.session.add(shop)
+                    anything_changed = True
+                    print(f"[DB] Created new shop: {shop_name}")
 
-        # --- 3. Process variants ---
-        for variant_info in self.get_variants():
-            variant = Variant.query.filter_by(shopify_id=variant_info['variant_id']).first()
-            incoming_urls = variant_info.get('raw_image_urls')
-            asset_images_json = variant_info.get('asset_images_json')
-
-            if not variant:
-                # --- New Variant ---
-                variant = Variant(
-                    product_id=product.id,
-                    shopify_id=variant_info['variant_id'],
-                    urls=incoming_urls
-                )
-                db.session.add(variant)
-                print(f"[DB] Created new variant ID: {variant_info['variant_id']}")
-
-                data_to_upload = self.data_for_put_into_metafield()
-                if not data_to_upload.get("results"):
-                    continue
-
-                if not any(v.get("data_images") for v in data_to_upload["results"]):
-                    continue
-
-                if data_to_upload.get("unmatched_count", 0) > 0:
-                    self.create_not_found_images_1(data_to_upload["results"], parent_dict=data_to_upload)
-
-                self.put_images_into_metafield(data_to_upload["results"], delete_existing=False)
-
-            else:
-                # --- Existing Variant ---
-                existing_urls = variant.urls or []
-                changes, removed, unchanged = [], [], []
-
-                # Compare URL lists
-                for idx, url in enumerate(incoming_urls):
-                    if idx >= len(existing_urls):
-                        changes.append((idx, None, url))
-                    elif existing_urls[idx] != url:
-                        changes.append((idx, existing_urls[idx], url))
-                    else:
-                        unchanged.append((idx, url))
-
-                for idx in range(len(incoming_urls), len(existing_urls)):
-                    removed.append((idx, existing_urls[idx]))
-
-                # --- Apply removals first ---
-                for pos, _ in sorted(removed, key=lambda x: x[0], reverse=True):
-                    if pos < len(asset_images_json):
-                        del asset_images_json[pos]
-
-                # --- Apply changes (add/update) ---
-                for pos, old, new in changes:
-                    new_id = self.get_id_from_image_url(new['url'])
-                    if not new_id:
-                        continue
-                    if pos < len(asset_images_json):
-                        asset_images_json[pos] = new_id
-                    else:
-                        asset_images_json.append(new_id)
-
-                # print("\nasset_images_json\n", asset_images_json)
-                # print('\n\n')
-                # continue
-
-                # --- Push updated metafields to Shopify ---
-                metafields_payload = [{
-                    "ownerId": variant_info['variant_id'],
-                    "namespace": "custom",
-                    "key": "variant_images",
-                    "type": "list.file_reference",
-                    "value": json.dumps(asset_images_json)
-                }]
-                print(f"[Shopify] Updating variant {variant_info['variant_id']} with {asset_images_json}")
-                # print("metafields_payload", metafields_payload)
-                # continue
-                try:
-                    response = shopify_request(
-                        query=MetafieldMutationBuilder().build(),
-                        shop_url=self.store['url'],
-                        access_token=self.store['token'],
-                        variables={"metafields": metafields_payload}
+            # --- 2. Get or create product ---
+            with db.session.no_autoflush:
+                product = Product.query.filter_by(shopify_id=self.product_id).first()
+                if not product:
+                    product = Product(
+                        shop_id=shop.id,
+                        title=self.get_title(),
+                        shopify_id=self.product_id
                     )
-                    print("[Shopify] Response:", response.json())
-                except Exception as e:
-                    print("[Shopify] Error:", e)
+                    db.session.add(product)
+                    anything_changed = True
+                    print(f"[DB] Created new product: {self.get_title()}")
 
-                # Ensure SQLAlchemy tracks this update
-                variant.urls = incoming_urls
-                db.session.add(variant)
+            # Flush here to ensure product.id exists for variants (FK)
+            if anything_changed:
+                db.session.flush()
 
-        # --- 4. Commit all changes once ---
-        db.session.commit()
-        print("[DB] All changes committed.")
+            # --- 3. Process variants ---
+            for variant_info in self.get_variants():
+                with db.session.no_autoflush:
+                    variant = Variant.query.filter_by(shopify_id=variant_info['variant_id']).first()
+
+                incoming_urls = variant_info.get('raw_image_urls') or []
+                asset_images_json = variant_info.get('asset_images_json') or []
+
+                if not variant:
+                    # New variant
+                    variant = Variant(
+                        product_id=product.id,
+                        shopify_id=variant_info['variant_id'],
+                        urls=incoming_urls
+                    )
+                    db.session.add(variant)
+                    anything_changed = True
+                    print(f"[DB] Created new variant ID: {variant_info['variant_id']}")
+
+                    # Call your upload functions here (metafields etc.)
+                    try:
+                        data_to_upload = self.data_for_put_into_metafield()
+                        if data_to_upload.get("results"):
+                            if data_to_upload.get("unmatched_count", 0) > 0:
+                                self.create_not_found_images_1(data_to_upload["results"], parent_dict=data_to_upload)
+                            self.put_images_into_metafield(data_to_upload["results"], delete_existing=False)
+                    except Exception as e:
+                        print(f"[Shopify] Error during upload for variant {variant_info['variant_id']}: {e}")
+
+                else:
+                    # Existing variant, check for changes
+                    existing_urls = variant.urls or []
+                    changes, removed = [], []
+
+                    # Compare incoming URLs with existing
+                    for idx, url in enumerate(incoming_urls):
+                        if idx >= len(existing_urls) or existing_urls[idx] != url:
+                            changes.append((idx, existing_urls[idx] if idx < len(existing_urls) else None, url))
+
+                    for idx in range(len(incoming_urls), len(existing_urls)):
+                        removed.append((idx, existing_urls[idx]))
+
+                    if changes or removed:
+                        # Apply changes/removals
+                        variant.urls = incoming_urls
+                        db.session.add(variant)
+                        anything_changed = True
+
+                        # Push updates to Shopify
+                        try:
+                            metafields_payload = [{
+                                "ownerId": variant_info['variant_id'],
+                                "namespace": "custom",
+                                "key": "variant_images",
+                                "type": "list.file_reference",
+                                "value": json.dumps(asset_images_json)
+                            }]
+                            response = shopify_request(
+                                query=MetafieldMutationBuilder().build(),
+                                shop_url=self.store['url'],
+                                access_token=self.store['token'],
+                                variables={"metafields": metafields_payload}
+                            )
+                            print(f"[Shopify] Updated variant {variant_info['variant_id']} with {asset_images_json}")
+                            print("[Shopify] Response:", response.json())
+                        except Exception as e:
+                            print(f"[Shopify] Error updating variant {variant_info['variant_id']}: {e}")
+
+            # --- 4. Commit only if something changed ---
+            if anything_changed:
+                db.session.commit()
+                print("[DB] All changes committed.")
+            else:
+                print("[DB] No changes detected, skipping commit.")
+
+        except Exception as e:
+            db.session.rollback()
+            print(f"[DB] Error during save_product_with_variants: {e}")
+            raise
 
     def get_errors(self):
         return self.errors
@@ -805,16 +796,17 @@ class ShopifyProductBuilder:
                     "metafield_id": metafield_id
                 })
 
-
         except Exception as e:
             summary["errors"].append({
                 "type": "exception",
                 "message": str(e)
             })
 
+        print('\n\n', summary, '\n\n')
+
         return summary
 
-    def populate_images(self):        
+    def populate_images(self):
         return "doing nothing for now"
 
     def delete_asset_images_from_metafield(self):

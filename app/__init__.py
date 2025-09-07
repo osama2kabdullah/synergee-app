@@ -4,6 +4,9 @@ from flask_login import LoginManager
 from flask_sqlalchemy import SQLAlchemy
 from dotenv import load_dotenv
 from config import Config, DevelopmentConfig, ProductionConfig
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.interval import IntervalTrigger
+import atexit
 
 # Load environment variables from .env
 load_dotenv()
@@ -61,5 +64,33 @@ def create_app():
     # Initialize database tables
     with app.app_context():
         db.create_all()
+
+        # --- Scheduler setup ---
+        from .routes.api import loop_over_all_stores
+        scheduler = BackgroundScheduler()
+
+        # Wrap job inside app.app_context()
+        def job_wrapper():
+            with app.app_context():
+                loop_over_all_stores()
+
+        # ✅ Run once immediately on startup
+        job_wrapper()
+
+        # Schedule for repeated runs
+        scheduler.add_job(
+            func=job_wrapper,
+            trigger=IntervalTrigger(minutes=10),   # change interval as needed
+            id="loop_over_all_stores_job",
+            name="Run loop_over_all_stores every 3 hours",
+            max_instances=1,
+            coalesce=True
+        )
+
+        scheduler.start()
+        print("[Scheduler] Started loop_over_all_stores job")
+
+        # Shut down scheduler on exit
+        atexit.register(lambda: scheduler.shutdown())
 
     return app

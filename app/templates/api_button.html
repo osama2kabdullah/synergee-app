@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>API Button Example</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <button id="apiButton">Call API</button>
+    <script>
+        document.getElementById('apiButton').addEventListener('click', function() {
+            fetch('/api/print', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    console.log(data);
+                })
+                .catch(error => alert('Error: ' + error));
+        });
+    </script>
+</body>
+</html>
