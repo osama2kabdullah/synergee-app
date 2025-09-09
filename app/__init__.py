@@ -75,12 +75,12 @@ def create_app():
                 loop_over_all_stores()
 
         # ✅ Run once immediately on startup
-        job_wrapper()
+        # job_wrapper()
 
         # Schedule for repeated runs
         scheduler.add_job(
             func=job_wrapper,
-            trigger=IntervalTrigger(minutes=10),   # change interval as needed
+            trigger=IntervalTrigger(hours=3),   # change interval as needed
             id="loop_over_all_stores_job",
             name="Run loop_over_all_stores every 3 hours",
             max_instances=1,

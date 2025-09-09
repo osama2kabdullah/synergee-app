@@ -12,7 +12,7 @@ SHOPIFY_API_VERSION = os.getenv("SHOPIFY_API_VERSION")
 STORES = {
     "shop1": {"name": os.getenv("SHOP1_NAME"), "url": os.getenv("SHOP1_URL"), "token": os.getenv("SHOP1_TOKEN")},
     "shop2": {"name": os.getenv("SHOP2_NAME"), "url": os.getenv("SHOP2_URL"), "token": os.getenv("SHOP2_TOKEN")},
-    # "shop3": {"name": os.getenv("SHOP3_NAME"), "url": os.getenv("SHOP3_URL"), "token": os.getenv("SHOP3_TOKEN")},
+    "shop3": {"name": os.getenv("SHOP3_NAME"), "url": os.getenv("SHOP3_URL"), "token": os.getenv("SHOP3_TOKEN")},
 }
 
 def shopify_headers(access_token):
