@@ -64,9 +64,31 @@ python check_data.py
 
 ---
 
-## 5. Test Run the Application
+## 5. Test Run the Application with Flask
 
-Run the app once manually to check everything works:
+Before using Waitress, you can test the app with Flask:
+
+```bash
+# Activate environment if not already
+.venv\Scripts\activate
+
+# Run Flask app
+flask run
+```
+
+👉 Open browser at:
+`http://127.0.0.1:5000/api-button`
+
+1. You will see a page with a Call API button.
+2. Click the button and check the terminal for the output.
+
+Once verified, press CTRL+C to stop the Flask server.
+
+---
+
+## 6. Test Run with Waitress
+
+Run the app using Waitress for production-like behavior:
 
 ```bash
 waitress-serve --host=0.0.0.0 --port=8080 wsgi:app
@@ -75,11 +97,11 @@ waitress-serve --host=0.0.0.0 --port=8080 wsgi:app
 👉 Open browser at:
 `http://localhost:8080`
 
-If the app runs correctly, press **CTRL+C** to stop it.
+If the app runs correctly, press CTRL+C to stop it.
 
 ---
 
-## 6. Run as a Windows Service
+## 7. Run as a Windows Service
 
 1. Open `nssm.exe` (from the downloaded NSSM).
 2. In the setup window, fill in:
@@ -97,7 +119,7 @@ If the app runs correctly, press **CTRL+C** to stop it.
 
 ---
 
-## 7. Start the Service
+## 8. Start the Service
 
 1. Open **Windows Services** (search "Services" in Start menu).
 2. Find service named **synergee-app**.
