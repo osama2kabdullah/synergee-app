@@ -8,7 +8,8 @@ from app.utils.response import success_response, error_response
 @main.route('/api/print', methods=['POST'])
 def print_api():
     print('API button was clicked!')
-    # loop_over_all_stores()
+    loop_over_all_stores()
+    return jsonify({"message": "API button was clicked!"}), 200
 
     shops_data = []
 
