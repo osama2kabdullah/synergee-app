@@ -103,7 +103,7 @@
                     <li><strong>Variants:</strong> {{ product.variant_count }}</li>
                     <li><strong>Product Images:</strong> {{ product.media_count }}</li>
                     <li><strong>Variant Images:</strong> {{ product.total_variant_images_count }}</li>
-                    <li class="is_filled"><strong>Images Filled:</strong> {{ "✅ Yes" if product.is_filled_images else "❌ No" }}</li>
+                    <li class="is_filled"><strong>Images Filled:</strong> {{ "✅ Yes" if not product.has_errors else "❌ No" }}</li>
                   </ul>
                   <div class="result"></div>
                   <div class="errors alert alert-danger {% if product.has_errors %}d-block{% else %}d-none{% endif %} mt-2">
@@ -117,8 +117,8 @@
                     {% endif %}
                   </div>
                   <div class="mt-auto">
-                    <button class="btn btn-outline-primary w-100 mb-2 {% if product.is_filled_images %}d-none{% endif %}" data-populate-button data-product-id="{{ product.id }}">Populate Images</button>
-                    <button class="btn btn-outline-danger w-100 {% if not product.is_filled_images %}d-none{% endif %}" data-populate-button-delete data-product-id="{{ product.id }}">Delete Asset Images</button>
+                    <button class="btn btn-outline-primary w-100 mb-2 {% if product.has_errors %}d-none{% endif %}" data-populate-button data-product-id="{{ product.id }}">Populate Images</button>
+                    <button class="btn btn-outline-danger w-100 {% if not product.has_errors %}d-none{% endif %}" data-populate-button-delete data-product-id="{{ product.id }}">Delete Asset Images</button>
                   </div>
                 </div>
               </div>

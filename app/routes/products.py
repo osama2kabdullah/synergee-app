@@ -41,7 +41,7 @@ def products():
     products = []
     for edge in json_data['data']['products']['edges']:
         product = ShopifyProductBuilder(edge['node'], store)
-        if not show_incompleted or not product.is_filled_images():
+        if product.has_errors() == bool(show_incompleted):
             products.append(product.details())
 
     page_info = json_data['data']['products']['pageInfo']

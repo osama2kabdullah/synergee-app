@@ -192,11 +192,11 @@ def populate_single_product():
     if not product.product_data:
         return error_response("Product data not available", 404)
 
-    if product.is_filled_images():
+    if not product.has_errors():
         return success_response(
             message="All images are already populated 🎉",
             status="success",
-            data={"details": product.data_for_client_display()}
+            data={"details": "All images are already populated"}
         )
 
     data_to_upload = product.data_for_put_into_metafield()
