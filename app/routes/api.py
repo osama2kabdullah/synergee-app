@@ -207,6 +207,18 @@ def populate_single_product():
             "No images found to populate.",
             data={"details": data_to_upload.get("results"), "next_step": "populate_first"}
         )
+    
+    result = product.save_product_with_variants()
+    if result:
+        return success_response(
+            message="Images successfully populated",
+            status="success",
+            data="Product and variants saved successfully."
+        )
+    else:
+        return error_response("Failed to save product and variants.", 500)
+    
+    return
 
     # Create unmatched images if any
     if data_to_upload.get("unmatched_count", 0) > 0:

@@ -282,18 +282,6 @@ class ShopifyProductBuilder:
         return len(self.errors) > 0
 
     def save_product_with_variants(self):
-        """
-        Save or update product with its variants.
-
-        Improvements made:
-        - Validate inputs early
-        - Flush immediately after creating shop/product so IDs exist
-        - Do not rely on db.session.no_autoflush (explicit flushes instead)
-        - Per-variant errors are caught and logged; processing continues
-        - External (Shopify) errors are caught and logged
-        - Avoid unreachable code (removed continue that skipped uploads)
-        - Commit only when something changed
-        """
         anything_changed = False
 
         # Defensive: ensure required attributes exist
@@ -434,20 +422,96 @@ class ShopifyProductBuilder:
                             print(f"[Shopify] Error preparing uploads for new variant {variant_id}: {e}")
 
                     else:
-                        # Existing variant: check for changes
-                        existing_urls = variant.urls or []
+                        # --- Existing variant: check for changes ---
+                        # Load existing urls from DB (JSON string)
+                        existing_urls = []
+
+                        if variant.urls:
+                            try:
+                                if isinstance(variant.urls, str):
+                                    parsed = json.loads(variant.urls)
+                                else:
+                                    parsed = variant.urls  # already a list/dict
+
+                                # Normalize: keep only string URLs
+                                existing_urls = [
+                                    u["url"] if isinstance(u, dict) else u
+                                    for u in parsed
+                                ]
+                            except Exception as e:
+                                print(f"[DB] Failed to parse variant.urls for {variant.id}: {e}")
+                                existing_urls = []
+                                continue
+
+                        # Normalize incoming urls (raw_image_urls may be dicts or strings)
+                        incoming_urls = [
+                            u["url"] if isinstance(u, dict) else u
+                            for u in (variant_info.get("raw_image_urls") or [])
+                        ]
+
                         changes, removed = [], []
+
+                        # Make a working copy of existing URLs
+                        updated_urls = list(existing_urls)
+
+                        # Ensure asset_images_json aligns with existing_urls
+                        trimmed_or_padded = False
+                        print(len(asset_images_json), len(existing_urls), '\n')
+                        if len(asset_images_json) > len(existing_urls):
+                            asset_images_json = asset_images_json[:len(existing_urls)]
+                            print(asset_images_json, '\n')
+                            trimmed_or_padded = True
+                        elif len(asset_images_json) < len(existing_urls):
+                            asset_images_json.extend([None] * (len(existing_urls) - len(asset_images_json)))
+                            print(asset_images_json, '\n')
+                            trimmed_or_padded = True
 
                         # Compare incoming URLs with existing
                         for idx, url in enumerate(incoming_urls):
-                            if idx >= len(existing_urls) or existing_urls[idx] != url:
-                                changes.append((idx, existing_urls[idx] if idx < len(existing_urls) else None, url))
+                            if idx >= len(updated_urls):
+                                # New URL → append URL and generate new ID
+                                updated_urls.append(url)
+                                new_id = self.get_id_from_image_url(url)
+                                asset_images_json.append(new_id)
+                                changes.append((idx, None, url))
+                            elif updated_urls[idx] != url:
+                                # URL changed → replace URL and generate new ID
+                                old_url = updated_urls[idx]
+                                updated_urls[idx] = url
+                                new_id = self.get_id_from_image_url(url)
+                                asset_images_json[idx] = new_id
+                                changes.append((idx, old_url, url))
+                            # else: URL unchanged → keep existing ID
 
-                        for idx in range(len(incoming_urls), len(existing_urls)):
-                            removed.append((idx, existing_urls[idx]))
+                        # Handle removals (existing longer than incoming)
+                        while len(updated_urls) > len(incoming_urls):
+                            removed_idx = len(updated_urls) - 1
+                            removed_url = updated_urls.pop()
+                            asset_images_json.pop()
+                            removed.append((removed_idx, removed_url))
 
-                        if changes or removed:
-                            variant.urls = incoming_urls
+                        # Fill any None IDs (from external service or padding)
+                        for idx, aid in enumerate(asset_images_json):
+                            if aid is None:
+                                asset_images_json[idx] = self.get_id_from_image_url(updated_urls[idx])
+
+                        # Update existing_urls
+                        existing_urls[:] = updated_urls
+
+                        # --- Debug print before any DB or Shopify updates ---
+                        print(f"\n=== Variant: {variant_id} ===")
+                        print("\nChanges:", changes)
+                        print("\nRemoved:", removed)
+                        # print("\nExisting URLs:", existing_urls)
+                        # print("\nIncoming URLs:", incoming_urls)
+                        print("\nAsset Images JSON:", asset_images_json)
+                        print("\npassing:", trimmed_or_padded)
+                        print("===============================\n")
+                        # continue
+
+                        if changes or removed or trimmed_or_padded:
+                            # Save full dicts back into DB, not just urls
+                            variant.urls = json.dumps(variant_info.get("raw_image_urls") or [])
                             db.session.add(variant)
                             anything_changed = True
 
@@ -466,7 +530,6 @@ class ShopifyProductBuilder:
                                     access_token=store.get('token'),
                                     variables={"metafields": metafields_payload}
                                 )
-                                # defensive: only attempt to print JSON if possible
                                 try:
                                     print(f"[Shopify] Updated variant {variant_id} with {asset_images_json}")
                                     print("[Shopify] Response:", response.json())

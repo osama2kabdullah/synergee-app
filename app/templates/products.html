@@ -117,8 +117,25 @@
                     {% endif %}
                   </div>
                   <div class="mt-auto">
-                    <button class="btn btn-outline-primary w-100 mb-2 {% if product.has_errors %}d-none{% endif %}" data-populate-button data-product-id="{{ product.id }}">Populate Images</button>
-                    <button class="btn btn-outline-danger w-100 {% if not product.has_errors %}d-none{% endif %}" data-populate-button-delete data-product-id="{{ product.id }}">Delete Asset Images</button>
+                    
+                    {# Populate Button: show only if has_errors and not is_filled #}
+                    {% if product.has_errors and not product.is_filled %}
+                    <button class="btn btn-outline-primary w-100 mb-2" 
+                            data-populate-button 
+                            data-product-id="{{ product.id }}">
+                        Populate Images
+                    </button>
+                    {% endif %}
+
+                    {# Delete Button: show if is_filled and (has_errors or not) → i.e. any time it's filled #}
+                    {% if product.is_filled %}
+                    <button class="btn btn-outline-danger w-100" 
+                            data-populate-button-delete 
+                            data-product-id="{{ product.id }}">
+                        Delete Asset Images
+                    </button>
+                    {% endif %}
+
                   </div>
                 </div>
               </div>
