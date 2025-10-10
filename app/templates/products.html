@@ -128,7 +128,7 @@
                     {% endif %}
 
                     {# Delete Button: show if is_filled and (has_errors or not) → i.e. any time it's filled #}
-                    {% if product.is_filled %}
+                    {% if product.is_filled or not product.has_errors %}
                     <button class="btn btn-outline-danger w-100" 
                             data-populate-button-delete 
                             data-product-id="{{ product.id }}">
