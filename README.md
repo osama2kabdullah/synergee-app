@@ -4,27 +4,42 @@ This guide explains how to set up, run, and maintain the Synergee Flask applicat
 
 ---
 
-## Initial Setup
+# 📦 1. Initial Setup
 
-#### 1. Install Required Software
+## 1. Install Required Software
 
-1. **Install Python**  
-   👉 [Download Python](https://www.python.org/downloads/)  
-   Make sure to check **“Add Python to PATH”** during installation.
+### ✔ Python
 
-2. **Install Git**  
-   👉 [Download Git](https://git-scm.com/downloads)
+👉 [https://www.python.org/downloads/](https://www.python.org/downloads/)
+Make sure to check:
+✅ **"Add Python to PATH"**
 
-3. **Install Node.js (for PM2)**  
-   👉 [Download Node.js](https://nodejs.org/en/download/)  
-   (This also installs `npm` which we’ll use to install PM2.)
+### ✔ Git
+
+👉 [https://git-scm.com/downloads](https://git-scm.com/downloads)
+
+### ✔ Node.js (required for PM2 option)
+
+👉 [https://nodejs.org/en/download/](https://nodejs.org/en/download/)
+
+This will also install `npm`.
+
+### ✔ NSSM (required for Windows Service option)
+
+👉 [https://nssm.cc/download](https://nssm.cc/download)
+
+Download **NSSM**, extract it, and keep:
+
+```
+C:\nssm\nssm.exe
+```
 
 ---
 
-#### 2. Get the Project
+# 📥 2. Get the Project
 
-1. Download the project from GitHub:  
-   👉 [Synergee App Repository](https://github.com/osama2kabdullah/synergee-app)
+1. Clone or download from GitHub:
+   👉 [https://github.com/osama2kabdullah/synergee-app](https://github.com/osama2kabdullah/synergee-app)
 
 2. Place the provided files into the project root:
 
@@ -33,9 +48,9 @@ This guide explains how to set up, run, and maintain the Synergee Flask applicat
 
 ---
 
-#### 3. Setup the Environment
+# 🏗 3. Setup the Python Environment
 
-Open **Command Prompt (CMD)** inside the project folder and run:
+Open **Command Prompt (CMD)** in the project folder:
 
 ```bash
 # Create virtual environment
@@ -44,205 +59,288 @@ python -m venv .venv
 # Activate environment
 .venv\Scripts\activate
 
-# Install project dependencies
+# Install required packages
 pip install -r requirements.txt
-````
+```
 
 ---
 
-#### 4. Database Setup
+# 🗄 4. Database Setup
 
-Run the following commands one by one:
+Run each command:
 
 ```bash
-# Create an empty database with all tables
 python create_db.py
-
-# Import existing data
 python import_data.py
-
-# Verify that data is correct
 python check_data.py
 ```
 
 ---
 
-#### 5. Test Run the Application with Flask
-
-Before using PM2, you can test the app with Flask:
+# 🧪 5. Test Run the Application (Flask Dev Server)
 
 ```bash
-# Activate environment if not already
 .venv\Scripts\activate
-
-# Run Flask app
 flask run
 ```
 
-👉 Open browser at:
-`http://127.0.0.1:5000/api-button`
+Open browser:
 
-1. You will see a page with a Call API button.
-2. Click the button and check the terminal for the output.
+👉 [http://127.0.0.1:5000](http://127.0.0.1:5000)
 
-Once verified, press **CTRL+C** to stop the Flask server.
+Press **CTRL+C** to stop the dev server.
 
 ---
 
-#### 6. Test Run with Waitress
-
-Run the app using Waitress for production-like behavior:
+# 🧪 6. Test Run with Waitress (Production WSGI Server)
 
 ```bash
 waitress-serve --host=0.0.0.0 --port=8080 wsgi:app
 ```
 
-👉 Open browser at:
-`http://localhost:8080`
+Open:
 
-If the app runs correctly, press **CTRL+C** to stop it.
+👉 [http://localhost:8080](http://localhost:8080)
+
+❗ If this works, you are ready for production deployment.
 
 ---
 
-#### 7. Run with PM2 (Production Mode)
+<br>
 
-Now we’ll use **PM2** to keep the app running in the background.
+# ⚙️ 7. Deployment Option A (Recommended): Run with PM2
 
-1. Install PM2 globally (only once per server):
+PM2 keeps the app running in the background and auto-restarts on system boot.
+
+## 7.1 Install PM2 Globally
 
 ```bash
 npm install -g pm2
 ```
 
-2. Start the app with PM2:
+## 7.2 Start the App with PM2
 
 ```bash
 pm2 start .venv/Scripts/python.exe --name synergee-app -- -m waitress --host=0.0.0.0 --port=8080 wsgi:app
 ```
 
-Explanation:
+PM2 explanation:
 
-* `pm2 start` → runs the process
-* `.venv/Scripts/python.exe` → Python from your virtual environment
-* `--name synergee-app` → gives the process a name
-* The rest are the arguments for running Waitress with your `wsgi:app`.
+* `.venv/Scripts/python.exe` → uses your virtual environment
+* `--name synergee-app` → gives the process a readable name
+* After `--`, the arguments go to Python
+* It starts Waitress with your WSGI file
 
-3. Save the process list so PM2 restarts it on reboot:
+## 7.3 Save PM2 Boot Configuration
 
 ```bash
 pm2 save
-```
-
-4. Enable PM2 startup (so it launches on system boot):
-
-```bash
 pm2 startup
 ```
 
-👉 Follow the printed instructions (PM2 will show a command you need to copy-paste once).
+PM2 will show a command to run once—copy & paste it.
 
----
-
-#### 8. Manage the Service
-
-Useful PM2 commands:
+## 7.4 PM2 Management Commands
 
 ```bash
-# List running apps
 pm2 list
-
-# Restart app
 pm2 restart synergee-app
-
-# Stop app
 pm2 stop synergee-app
-
-# View logs
 pm2 logs synergee-app
 ```
 
----
-
-#### 🎉 Done!
-
-The **Synergee App** is now running in the background under **PM2**.
-It will automatically restart on crashes and also on server reboot.
-
-👉 Open in browser:
-`http://localhost:8080`
+👍 Your app now runs 24/7 and auto-starts after reboot.
 
 ---
 
-## Updating the Application on the Server
+<br>
 
-When you push new updates to GitHub, follow these steps on the server to deploy the latest version:
+# ⚙️ 8. Deployment Option B (BEST for reliability): Run as a Windows Service (NSSM)
 
-1. **Go to the project folder**:
+This is the **most stable** long-term solution.
+Windows Services:
+
+✔ Run in the background
+✔ Start automatically on boot
+✔ Restart if they crash
+✔ Require no terminal
+
+---
+
+## 8.1 Download NSSM
+
+👉 [https://nssm.cc/download](https://nssm.cc/download)
+
+Extract it and put:
+
+```
+C:\nssm\nssm.exe
+```
+
+---
+
+## 8.3 Install the Service Using NSSM
+
+Open CMD **as Administrator**: Go to the folder where NSSM extracted, and inside that have nss.exe. need to go into that folder.
+
+```
+nssm.exe install synergee-app
+```
+
+A GUI window opens.
+
+Fill it out:
+
+### **Application tab**
+
+**Path:**
+
+```
+C:\path\to\synergee-app\.venv\Scripts\python.exe
+```
+
+**Arguments:**
+
+```
+-m waitress --host=0.0.0.0 --port=8080 wsgi:app
+```
+
+**Startup Directory:**
+
+```
+C:\path\to\synergee-app
+```
+
+Click **Install Service**.
+
+---
+
+## 8.4 Start the Service
+
+Open Windows Services:
+Search → **services.msc**
+
+Find:
+
+```
+synergee-app
+```
+
+Right-click → **Start**
+
+Now the Flask app is running in the background.
+
+---
+
+## 8.5 (Optional but Recommended) Enable Logs
+
+Run:
+
+```
+C:\nssm\nssm.exe edit synergee-app
+```
+
+Under **I/O** tab:
+
+```
+stdout: C:\synergee-app\logs\output.log
+stderr: C:\synergee-app\logs\error.log
+```
+
+Click **Save**.
+
+---
+
+## 8.6 Windows Service Management
+
+Stop:
+
+```
+nssm stop synergee-app
+```
+
+Start:
+
+```
+nssm start synergee-app
+```
+
+Remove:
+
+```
+nssm remove synergee-app
+```
+
+---
+
+<br>
+
+# 🔄 9. Updating the Application
+
+Whenever new updates are available:
 
 ```bash
 cd C:\synergee-app
+pm2 stop synergee-app   # if using PM2
+nssm stop synergee-app  # if using Windows Service
 ```
 
-2. **Stop the running app with PM2**:
-
-```bash
-pm2 stop synergee-app
-```
-
-3. **Pull the latest changes from GitHub**:
+Then pull updates:
 
 ```bash
 git pull origin main
-
-# ensure you are on the main branch
-git checkout main
+git checkout main   # ensure correct branch
 ```
 
-*(If your default branch is `master`, replace `main` with `master`.)*
+Replace `.env` or `db_export.json` if provided.
 
-4. **Replace the existing `db_export.json` file** with the new one if you received it.
-
-5. **Activate the virtual environment**:
+Reinstall dependencies:
 
 ```bash
 .venv\Scripts\activate
-```
-
-6. **Install updated dependencies**:
-
-```bash
 pip install -r requirements.txt
 ```
 
-7. **Reset the database**:
+Reset & import database:
 
 ```bash
-# Delete old database
-python delete_db.py   # (or manually remove the file if delete_db.py is not available)
-
-# Create a fresh database
+python delete_db.py
 python create_db.py
-
-# Import new data
 python import_data.py
-
-# Verify data integrity
 python check_data.py
 ```
 
-8. **Start the application again with PM2**:
+Restart app:
+
+PM2:
 
 ```bash
 pm2 start synergee-app
 ```
 
-9. **Test the application**:
-   Open your browser and navigate to:
+Windows Service:
 
 ```
-http://localhost:8080
+nssm start synergee-app
 ```
-
-✅ If the app runs correctly, the update is complete.
 
 ---
+
+<br>
+
+# 🎉 Deployment Complete
+
+Your Synergee App now supports:
+
+✔ Flask dev server (testing)
+✔ **Waitress + PM2** (simple + stable)
+✔ **Waitress + Windows Service (NSSM)** (maximum reliability)
+✔ Auto-restart
+✔ Auto-boot startup
+✔ Background operation
+✔ Production-safe WSGI server
+✔ Works with your internal 3-hour scheduler
+
+Open the app at:
+
+👉 [http://localhost:8080](http://localhost:8080)
