@@ -4,9 +4,6 @@ from flask_login import LoginManager
 from flask_sqlalchemy import SQLAlchemy
 from dotenv import load_dotenv
 from config import Config, DevelopmentConfig, ProductionConfig
-from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.interval import IntervalTrigger
-import atexit
 
 # Load environment variables from .env
 load_dotenv()
@@ -33,13 +30,10 @@ def create_app():
     }
     app.config.from_object(config_map.get(config_type, DevelopmentConfig))
 
-    # Ensure persistent directory exists
-    os.makedirs("/var/data", exist_ok=True)
-
     # Use .env database URI if available, else fallback to persistent path
     db_uri = os.getenv("DEV_DATABASE_URI") if config_type == "development" else os.getenv("DATABASE_URI")
     if not db_uri:
-        db_uri = "sqlite:////var/data/app.db"
+        db_uri = "sqlite:///prod.db"
 
     app.config["SQLALCHEMY_DATABASE_URI"] = db_uri
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
@@ -60,37 +54,5 @@ def create_app():
     from .routes.auth import auth_bp
     app.register_blueprint(main)
     app.register_blueprint(auth_bp)
-
-    # Initialize database tables
-    with app.app_context():
-        db.create_all()
-
-        # --- Scheduler setup ---
-        from .routes.api import loop_over_all_stores
-        scheduler = BackgroundScheduler()
-
-        # Wrap job inside app.app_context()
-        def job_wrapper():
-            with app.app_context():
-                loop_over_all_stores()
-
-        # ✅ Run once immediately on startup
-        # job_wrapper()
-
-        # Schedule for repeated runs
-        scheduler.add_job(
-            func=job_wrapper,
-            trigger=IntervalTrigger(hours=3),   # change interval as needed
-            id="loop_over_all_stores_job",
-            name="Run loop_over_all_stores every 3 hours",
-            max_instances=1,
-            coalesce=True
-        )
-
-        scheduler.start()
-        print("[Scheduler] Started loop_over_all_stores job")
-
-        # Shut down scheduler on exit
-        atexit.register(lambda: scheduler.shutdown())
 
     return app
